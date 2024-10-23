@@ -179,6 +179,17 @@ let plugin = {
             z-index: 2;
         }
 
+        #timer {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            color: gray;
+            z-index: 3;
+            display: none;
+        }
+
         #visualizer {
             position: absolute;
             top: 0;
@@ -197,13 +208,17 @@ let plugin = {
 
 <body>
     <button id="recordButton">
+        <div id="timer">00:00</div>
         <span>Start Recording</span>
     </button>
     
 <script>
     const recordButton = document.getElementById('recordButton');
     const buttonText = recordButton.querySelector('span');
+    const timer = document.getElementById('timer');
     let pollingInterval;
+    let recordingInterval;
+    let secondsElapsed = 0;
 
     async function run() {
         let mediaRecorder;
@@ -247,6 +262,8 @@ let plugin = {
                     mediaRecorder.start();
                     isRecording = true;
                     buttonText.textContent = 'Stop Recording';
+                    timer.style.display = 'block';  // Show the timer
+                    startTimer();  // Start the timer
 
                     // Initialize audio context and analyser for visualization
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -281,6 +298,8 @@ let plugin = {
                         buttonText.textContent = 'Processing...';
                         recordButton.disabled = true;
                         recordButton.classList.add('disabled');
+                        stopTimer();  // Stop the timer
+                        timer.style.display = 'none';  // Hide the timer
 
                         // Transfer recording to host plugin
                         const audioBlob = new Blob(audioChunks, { type: options.mimeType });
@@ -380,6 +399,25 @@ let plugin = {
                 }
             }, 250);
         }
+
+        function startTimer() {
+            secondsElapsed = 0;
+            updateTimer(); // Initial call to set timer to 00:00
+            recordingInterval = setInterval(() => {
+                secondsElapsed++;
+                updateTimer();
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(recordingInterval);
+        }
+
+        function updateTimer() {
+            const minutes = Math.floor(secondsElapsed / 60);
+            const seconds = secondsElapsed % 60;
+            timer.textContent = \`\${String(minutes).padStart(2, '0')}:\${String(seconds).padStart(2, '0')}\`;
+        }
     }
 
     try {
@@ -395,5 +433,6 @@ let plugin = {
 </script>
 </body>
 </html>`;
+
     }
 }
