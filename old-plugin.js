@@ -4,7 +4,7 @@ let plugin = {
 
     async appOption(app) {
         // We always look for the plugin note that contains the embed button and navigate there
-        let homeNote = await app.findNote({name: "🎙 Voice notes", tags: ["system/voice-notes"]});
+        let homeNote = await app.findNote({name: "Voice notes", tags: ["system/voice-notes"]});
         console.log(homeNote);
         if (!homeNote) {
             // If that note does not exist, we create it
@@ -14,8 +14,8 @@ let plugin = {
             console.log(contents);
 
             // If the note exists but the embed is not inside, we insert it
-            let pluginMarkdown = `<object data="plugin://${ app.context.pluginUUID }" data-aspect-ratio="1" />`;
-            if (!contents.includes(pluginMarkdown.slice(0, 10))) {
+            let pluginMarkdown = `<object data="plugin://${ app.context.pluginUUID }" data-aspect-ratio="1" />\n# History`;
+            if (!contents.includes(pluginMarkdown)) {
                 await app.insertNoteContent({uuid: homeNote.uuid}, pluginMarkdown);
             }
         }
@@ -75,9 +75,22 @@ let plugin = {
                 const transcriptionData = await transcriptionResponse.json();
                 const transcriptionText = transcriptionData.text;
                 console.log(transcriptionText);
+
                 await app.writeClipboardData(transcriptionText);
                 console.log("clipboarded");
                 await app.alert(`Text copied to clipboard. Audio file size was: ${fileSizeMB}MB\n${transcriptionText}`);
+
+                // Insert the transcription in the current note
+                let newHeading;
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                newHeading = `### ${year}/${month}/${day} voice notes taken at [${hours}:${minutes}]\n${transcriptionText}`;
+                let noteHandle = await app.findNote({name: "Voice notes", tags: ["system/voice-notes"]});
+                await app.insertNoteContent(noteHandle, newHeading, {atEnd: true});
             } catch (error) {
                 app.alert('Error: ' + error + error.message);
             } finally {
@@ -122,7 +135,6 @@ let plugin = {
         // Create a Blob from the byteArrays
         return new Blob(byteArrays, { type: contentType });
     },
-
 
     renderEmbed(app, args) {
         let status;
@@ -202,6 +214,7 @@ let plugin = {
         body {
             margin: 20px;
             font-family: 'Roboto', sans-serif;
+            background-color: transparent;
         }
     </style>
 </head>
