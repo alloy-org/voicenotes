@@ -39,6 +39,7 @@ let plugin = {
                 console.log("converting...");
                 const conversionFormData = new FormData();
                 conversionFormData.append('file', audioBlob, `recording.webm`);
+                // await app.alert("before fetch")
                 const conversionResponse = await fetch('https://amplenote-plugins-cors-anywhere.onrender.com/https://audioconvert.onrender.com/convert', {
                     method: 'POST',
                     body: conversionFormData,
@@ -47,6 +48,7 @@ let plugin = {
                     const errorData = await conversionResponse.json();
                     throw new Error(errorData.error || 'Error during audio conversion.');
                 }
+                // await app.alert("after fetch")
                 const mp3Blob = await conversionResponse.blob();
 
                 // TODO: update status
@@ -55,6 +57,7 @@ let plugin = {
 
                 // **Step 2: Send the MP3 file to OpenAI's transcription API**
                 console.log("whispering...");
+                // await app.alert("before whisper")
                 const OPENAI_API_KEY = app.settings["OPENAI API KEY"];
                 const transcriptionFormData = new FormData();
                 transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
@@ -71,14 +74,15 @@ let plugin = {
                     const errorData = await transcriptionResponse.json();
                     throw new Error(errorData.error.message || 'Error during transcription.');
                 }
+                // await app.alert("after whisper")
                 console.log("ok...");
                 const transcriptionData = await transcriptionResponse.json();
                 const transcriptionText = transcriptionData.text;
                 console.log(transcriptionText);
 
-                await app.writeClipboardData(transcriptionText);
+                // await app.writeClipboardData(transcriptionText);
                 console.log("clipboarded");
-                await app.alert(`Text copied to clipboard. Audio file size was: ${fileSizeMB}MB\n${transcriptionText}`);
+                await app.alert(`Text inserted in Voice Notes. Audio file size was: ${fileSizeMB}MB\n${transcriptionText}`);
 
                 // Insert the transcription in the current note
                 let newHeading;
@@ -92,7 +96,7 @@ let plugin = {
                 let noteHandle = await app.findNote({name: "Voice notes", tags: ["system/voice-notes"]});
                 await app.insertNoteContent(noteHandle, newHeading, {atEnd: true});
             } catch (error) {
-                app.alert('Error: ' + error + error.message);
+                app.alert('Error: ' + error + error.message + String(fileSizeMB));
             } finally {
                 // TODO: update status
                 this.status = "new";
@@ -245,6 +249,7 @@ let plugin = {
         let options = { mimeType: 'audio/webm' };
         let fileExtension = 'webm';
 
+        // await window.callAmplenotePlugin("alert", "in run");
         // Check for supported MIME types
         if (!MediaRecorder.isTypeSupported('audio/webm')) {
             if (MediaRecorder.isTypeSupported('audio/mp4')) {
@@ -263,9 +268,11 @@ let plugin = {
         }
 
         recordButton.addEventListener('click', async () => {
+            // await window.callAmplenotePlugin("alert", "in click");
             if (!isRecording) {
                 // Start recording
                 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    // await window.callAmplenotePlugin("alert", "in mediadevices");
                     // Calling getUserMedia will ask for microphone permission
                     // On iOS this seems to happen every time
                     // Make sure to call close on every "track" of this stream after you're done
@@ -286,6 +293,7 @@ let plugin = {
                     analyser.smoothingTimeConstant = 0.85; // Adjust for smoother visualization
                     source.connect(analyser);
                     dataArray = new Uint8Array(analyser.fftSize);
+                    // await window.callAmplenotePlugin("alert", "after audio context");
 
                     // Create canvas for visualizer inside the button
                     const canvas = document.createElement('canvas');
@@ -293,8 +301,10 @@ let plugin = {
                     canvas.width = recordButton.clientWidth;
                     canvas.height = recordButton.clientHeight;
                     recordButton.appendChild(canvas);
+                    // await window.callAmplenotePlugin("alert", "after canvas");
 
                     drawVisualizer(canvas, analyser, dataArray);
+                    // await window.callAmplenotePlugin("alert", "after draw");
 
                     mediaRecorder.ondataavailable = (e) => {
                         audioChunks.push(e.data);
@@ -302,6 +312,7 @@ let plugin = {
 
                     mediaRecorder.onstop = async () => {
                         // Close the microphone handle to stop the "recording" badge from appearing
+                        // await window.callAmplenotePlugin("alert", "in stop");
                         stream.getTracks()
                           .forEach( track => track.stop() );
                         
@@ -435,6 +446,7 @@ let plugin = {
 
     try {
         let status = "${status}";
+        // window.callAmplenotePlugin("alert", status);
         if (!status || status === "undefined") {
             run().then((result) => console.log(result));
         } else {
