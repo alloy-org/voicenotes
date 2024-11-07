@@ -8,13 +8,13 @@ let plugin = {
         console.log(homeNote);
         if (!homeNote) {
             // If that note does not exist, we create it
-            let homeNoteUUID = await app.createNote("🎙️ Voice notes", ["system/voice-notes"]);
+            let homeNoteUUID = await app.createNote("Voice notes", ["system/voice-notes"]);
             homeNote = await app.findNote({uuid: homeNoteUUID});
             let contents = await app.getNoteContent({uuid: homeNoteUUID});
             console.log(contents);
 
             // If the note exists but the embed is not inside, we insert it
-            let pluginMarkdown = `<object data="plugin://${ app.context.pluginUUID }" data-aspect-ratio="1" />\n# History`;
+            let pluginMarkdown = `<object data="plugin://${ app.context.pluginUUID }" data-aspect-ratio="1" />\n\n# History`;
             if (!contents.includes(pluginMarkdown)) {
                 await app.insertNoteContent({uuid: homeNote.uuid}, pluginMarkdown);
             }
