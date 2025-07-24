@@ -24,36 +24,17 @@ export class PluginAPIService {
 export class DevPluginAPIService extends PluginAPIService {
     constructor() {
         super();
-        this.mockApiKey = 'sk-mock-api-key-for-development-testing'; // Initial fallback
+        // Load API key from development environment (synchronous now)
+        const devConfig = loadDevEnvironment();
+        this.mockApiKey = devConfig.OPENAI_API_KEY;
         this.insertedTexts = []; // Track inserted texts for dev debugging
-        this.envLoaded = false;
-        
-        // Load API key from development environment (async)
-        this.initializeApiKey();
         
         console.log('🔧 [DEV] DevPluginAPIService initialized');
-    }
-    
-    async initializeApiKey() {
-        try {
-            const devConfig = await loadDevEnvironment();
-            this.mockApiKey = devConfig.OPENAI_API_KEY;
-            this.envLoaded = true;
-            console.log('🔑 [DEV] API key source:', this.mockApiKey.startsWith('sk-mock') ? 'mock' : 'environment');
-        } catch (error) {
-            console.error('🚨 [DEV] Failed to load environment:', error);
-        }
+        console.log('🔑 [DEV] API key source:', this.mockApiKey.startsWith('sk-mock') ? 'mock' : 'environment');
     }
     
     async getApiKey() {
         console.log('[DEV PLUGIN] Getting API key...');
-        
-        // Ensure environment is loaded before returning key
-        if (!this.envLoaded) {
-            console.log('[DEV PLUGIN] Environment not loaded yet, loading now...');
-            await this.initializeApiKey();
-        }
-        
         await this.simulateDelay(100); // Simulate network delay
         return this.mockApiKey;
     }
@@ -239,18 +220,15 @@ export function setupPluginAPIService() {
             mockTranscribe: (blob) => service.mockTranscribe(blob),
             // Environment utilities
             ...devUtils,
-            reloadApiKey: async () => {
-                const devConfig = await loadDevEnvironment();
+            reloadApiKey: () => {
+                const devConfig = loadDevEnvironment();
                 service.setMockApiKey(devConfig.OPENAI_API_KEY);
-                if (service.initializeApiKey) {
-                    await service.initializeApiKey();
-                }
                 return devConfig.OPENAI_API_KEY.startsWith('sk-mock') ? '[MOCK KEY]' : 'Environment key loaded';
             }
         };
         console.log('🔧 Development utilities available at window.pluginAPIDebug');
-        console.log('💡 Use window.pluginAPIDebug.showEnvTemplate() to see .env template');
         console.log('🔑 Use window.pluginAPIDebug.setApiKey("your-key") to set API key');
+        console.log('💡 Use window.pluginAPIDebug.showInstructions() for help');
     }
     
     return service;
