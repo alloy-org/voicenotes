@@ -14,10 +14,21 @@ let secondsElapsed = 0;
 async function processTranscriptWithChatGPT(transcript, apiKey) {
     console.log("Processing transcript with ChatGPT...");
     
-    const prompt = `Please analyze the following voice note transcript and provide:
+    const now = new Date();
+    const currentDateTime = now.toISOString();
+    
+    const prompt = `The current date and time is: ${currentDateTime}
+
+Please analyze the following voice note transcript and provide:
 
 1. **Summary**: A concise summary in 3-5 bullet points capturing the main topics and key information
-2. **Action Items**: Extract all tasks, action items, or things that need to be done. If there are no clear action items, write "No specific action items identified."
+2. **Action Items**: 
+You will generate a JSON after the following rules:
+2.1. First, extract all events or things that have a specific, explicit start date or start date and time. We call these events.
+2.2. Then, extract all action items that have deadlines. We call these deadlines.
+2.3. Then extract all tasks that don't have explicit dates attached to them. Some of these tasks can be "preparation for an event" so keep that in mind.
+3.4 Then, assign importance and urgency to every task that doesn't have a deadline or start date.
+3.5. Then, think which tasks BLOCK other tasks on the list.
 
 Please format your response exactly like this:
 
@@ -27,9 +38,24 @@ Please format your response exactly like this:
 • [bullet point 3]
 
 ## Action Items
-• [action item 1]
-• [action item 2]
-• [action item 3]
+// JSON FORMAT ALWAYS
+// All time fields are date time strings in a format that can be parsed by JavaScript's Date constructor
+// All durations are parsable by whatever javascript library you use to parse durations. 
+// All dates deduced from the transcript are relative to the current date and time mentioned above
+// ONLY apply start dates, deadlines, durations when they are explicitly mentioned in the transcript
+{
+    "actionItems": [
+        {
+            "id": "1", // unique id for the action item, must be a string, required
+            "task": "Task 1", // the task description, must be a string, required
+            "priority": "important" | "urgent" | "neither" | "both", // the priority of the task, must be a string, required
+            "deadline": "2025-01-01T00:00:00.000Z", // the deadline of the task, must be a date time string, optional
+            "start": "2025-01-01T00:00:00.000Z", // the start time of the task, must be a date time string, optional
+            "duration": 1, // in minutes, optional
+            "blocking": ["2", "3"] // the ids of the tasks that this task is blocking, must be an array of strings, optional
+        }
+    ]
+}
 
 Transcript:
 ${transcript}`;
@@ -48,7 +74,7 @@ ${transcript}`;
                     content: prompt
                 }
             ],
-            max_tokens: 500,
+            // max_tokens: 500,
             temperature: 0.3
         })
     });
@@ -67,57 +93,88 @@ async function processAudioRecording(audioBlob) {
     const fileSizeMB = audioBlob.size / 1000000;
     
     try {
-        // Update status
-        buttonText.textContent = 'Converting...';
-
-        // **Step 1: Send the audio blob to be converted to mp3**
-        console.log("converting...");
-        const conversionFormData = new FormData();
-        conversionFormData.append('file', audioBlob, `recording.webm`);
-        
-        const conversionResponse = await fetch('https://amplenote-plugins-cors-anywhere.onrender.com/https://audioconvert.onrender.com/convert', {
-            method: 'POST',
-            body: conversionFormData,
-        });
-        
-        if (!conversionResponse.ok) {
-            const errorData = await conversionResponse.json();
-            throw new Error(errorData.error || 'Error during audio conversion.');
-        }
-        
-        const mp3Blob = await conversionResponse.blob();
-
-        // Update status
-        buttonText.textContent = 'Transcribing...';
-
-        // **Step 2: Send the MP3 file to OpenAI's transcription API**
-        console.log("whispering...");
-        
-        // Get API key from the whisper service
+        // Check if we're in development mode (based on environment detection)
         const OPENAI_API_KEY = await whisperAPI.getApiKey();
+        const isDevMode = window.location.hostname === 'localhost' || 
+                         window.location.hostname === '127.0.0.1' || 
+                         window.location.protocol === 'file:' ||
+                         (window.location.port && (window.location.port.startsWith('3') || window.location.port.startsWith('8') || window.location.port.startsWith('5')));
         
-        const transcriptionFormData = new FormData();
-        transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
-        transcriptionFormData.append('model', 'whisper-1');
+        console.log("🔍 Environment check:");
+        console.log("  hostname:", window.location.hostname);
+        console.log("  protocol:", window.location.protocol);
+        console.log("  port:", window.location.port);
+        console.log("  isDevMode:", isDevMode);
         
-        const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            },
-            body: transcriptionFormData,
-        });
+        let transcriptionText;
         
-        if (!transcriptionResponse.ok) {
-            console.log("not ok...");
-            const errorData = await transcriptionResponse.json();
-            throw new Error(errorData.error.message || 'Error during transcription.');
+        if (isDevMode) {
+            // **DEV MODE: Skip audio processing and use mock transcript**
+            console.log("🔧 [DEV] Skipping audio conversion and transcription, using mock text");
+            buttonText.textContent = 'Using dev transcript...';
+            
+            // Simulate some processing time
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            transcriptionText = `Alright, here's what's happening this week at home:
+I have to call the plumber to fix the kitchen sink leak before it floods.
+Sort through and donate outgrown kids' clothes by Saturday afternoon.
+Grandma's 80th birthday dinner is on Sunday at 6pm. I should also send an invite to the whole family before that.
+I can't start painting the living room until the new curtains arrive. They need to be picked up from the tailor first.
+And it's pretty important to put some money in an investment account.` 
+            
+            console.log("🔧 [DEV] Mock transcript:", transcriptionText);
+        } else {
+            // **PRODUCTION MODE: Real audio processing**
+            // Update status
+            buttonText.textContent = 'Converting...';
+
+            // **Step 1: Send the audio blob to be converted to mp3**
+            console.log("converting...");
+            const conversionFormData = new FormData();
+            conversionFormData.append('file', audioBlob, `recording.webm`);
+            
+            const conversionResponse = await fetch('https://amplenote-plugins-cors-anywhere.onrender.com/https://audioconvert.onrender.com/convert', {
+                method: 'POST',
+                body: conversionFormData,
+            });
+            
+            if (!conversionResponse.ok) {
+                const errorData = await conversionResponse.json();
+                throw new Error(errorData.error || 'Error during audio conversion.');
+            }
+            
+            const mp3Blob = await conversionResponse.blob();
+
+            // Update status
+            buttonText.textContent = 'Transcribing...';
+
+            // **Step 2: Send the MP3 file to OpenAI's transcription API**
+            console.log("whispering...");
+            
+            const transcriptionFormData = new FormData();
+            transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
+            transcriptionFormData.append('model', 'whisper-1');
+            
+            const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                },
+                body: transcriptionFormData,
+            });
+            
+            if (!transcriptionResponse.ok) {
+                console.log("not ok...");
+                const errorData = await transcriptionResponse.json();
+                throw new Error(errorData.error.message || 'Error during transcription.');
+            }
+            
+            console.log("ok...");
+            const transcriptionData = await transcriptionResponse.json();
+            transcriptionText = transcriptionData.text;
+            console.log(transcriptionText);
         }
-        
-        console.log("ok...");
-        const transcriptionData = await transcriptionResponse.json();
-        const transcriptionText = transcriptionData.text;
-        console.log(transcriptionText);
 
         // Update status for ChatGPT processing
         buttonText.textContent = 'Summarizing...';
