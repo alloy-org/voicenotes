@@ -82,6 +82,21 @@ class WhisperAPIService {
         return await this.pluginCommunication.callPlugin('wasJustInvoked');
     }
     
+    async getCurrentNoteUUID() {
+        console.log('[WHISPER] Getting current note UUID...');
+        return await this.pluginCommunication.callPlugin('getCurrentNoteUUID');
+    }
+    
+    async getNoteTasks(noteUUID) {
+        console.log('[WHISPER] Getting tasks from note:', noteUUID);
+        return await this.pluginCommunication.callPlugin('getNoteTasks', noteUUID);
+    }
+    
+    async updateTask(taskUUID, properties) {
+        console.log('[WHISPER] Updating task:', taskUUID, 'with properties:', properties);
+        return await this.pluginCommunication.callPlugin('updateTask', taskUUID, properties);
+    }
+    
     // Debug utilities
     getStats() {
         return {

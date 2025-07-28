@@ -32,18 +32,13 @@ You will generate a JSON after the following rules:
 
 Please format your response exactly like this:
 
-## Summary
-• [bullet point 1]
-• [bullet point 2]
-• [bullet point 3]
-
-## Action Items
 // JSON FORMAT ALWAYS
 // All time fields are date time strings in a format that can be parsed by JavaScript's Date constructor
 // All durations are parsable by whatever javascript library you use to parse durations. 
 // All dates deduced from the transcript are relative to the current date and time mentioned above
 // ONLY apply start dates, deadlines, durations when they are explicitly mentioned in the transcript
 {
+    "summary": ["bullet point 1", "bullet point 2", "bullet point 3"],
     "actionItems": [
         {
             "id": "1", // unique id for the action item, must be a string, required
@@ -85,7 +80,36 @@ ${transcript}`;
     }
 
     const chatData = await chatResponse.json();
-    return chatData.choices[0].message.content.trim();
+    const rawResponse = chatData.choices[0].message.content.trim();
+    
+    try {
+        // Extract JSON from potential markdown code blocks
+        let jsonString = rawResponse;
+        
+        // Check if wrapped in triple backticks with optional "json" language specifier
+        const codeBlockRegex = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
+        const match = jsonString.match(codeBlockRegex);
+        
+        if (match) {
+            jsonString = match[1].trim();
+            console.log("Extracted JSON from code block");
+        }
+        
+        console.log("JSON to parse:", jsonString);
+        
+        // Parse the JSON response
+        const parsed = JSON.parse(jsonString);
+        return parsed;
+    } catch (error) {
+        console.error("Failed to parse ChatGPT JSON response:", error);
+        console.log("Raw response:", rawResponse);
+        
+        // Fallback: return a basic structure
+        return {
+            summary: ["Error parsing ChatGPT response"],
+            actionItems: []
+        };
+    }
 }
 
 // Audio processing pipeline
@@ -181,8 +205,8 @@ And it's pretty important to put some money in an investment account.`
 
         // **Step 3: Process transcript with ChatGPT for summary and tasks**
         console.log("processing with ChatGPT...");
-        const chatGPTAnalysis = await processTranscriptWithChatGPT(transcriptionText, OPENAI_API_KEY);
-        console.log("ChatGPT analysis:", chatGPTAnalysis);
+        const chatGPTData = await processTranscriptWithChatGPT(transcriptionText, OPENAI_API_KEY);
+        console.log("ChatGPT data:", chatGPTData);
 
         // Create formatted content with timestamp
         const now = new Date();
@@ -192,19 +216,130 @@ And it's pretty important to put some money in an investment account.`
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         
+        // Format the summary
+        const summaryText = chatGPTData.summary && chatGPTData.summary.length > 0 
+            ? chatGPTData.summary.map(point => `- ${point}`).join('\n')
+            : '- No summary available';
+            
+        // Format the action items
+        const actionItemsText = chatGPTData.actionItems && chatGPTData.actionItems.length > 0
+            ? chatGPTData.actionItems.map(item => `- [ ] ${item.task}`).join('\n')
+            : '- [ ] No action items identified';
+        
         const formattedText = `### ${year}/${month}/${day} voice notes taken at [${hours}:${minutes}]
 
 ## Original Transcript
 ${transcriptionText}
 
-${chatGPTAnalysis}`;
+# Summary
+${summaryText}
+
+# Action Items
+${actionItemsText}`;
 
         // Send the complete analysis to be inserted using the whisper service
         await whisperAPI.insertText(formattedText);
+        
+        // **Step 4: Update task properties in Amplenote**
+        if (chatGPTData.actionItems && chatGPTData.actionItems.length > 0) {
+            console.log("Updating task properties in Amplenote...");
+            buttonText.textContent = 'Updating tasks...';
+            
+            try {
+                await updateTaskPropertiesInAmplenote(chatGPTData.actionItems);
+                console.log("Task properties updated successfully");
+            } catch (error) {
+                console.error("Error updating task properties:", error);
+            }
+        }
+        
         await whisperAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscript, summary, and action items have been added to your Voice Notes.`);
 
     } catch (error) {
         await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
+    }
+}
+
+// Function to update task properties in Amplenote
+async function updateTaskPropertiesInAmplenote(actionItems) {
+    try {
+        // Get the current note UUID from the whisper service
+        const noteUUID = await whisperAPI.getCurrentNoteUUID();
+        console.log("Getting tasks from note:", noteUUID);
+        
+        // Get all tasks from the current note
+        const amplenoteTask = await whisperAPI.getNoteTasks(noteUUID);
+        console.log("Found Amplenote tasks:", amplenoteTask);
+        
+        // Match and update each action item
+        for (const actionItem of actionItems) {
+            console.log("Processing action item:", actionItem.task);
+            
+            // Find matching Amplenote task by content similarity
+            const matchingTask = amplenoteTask.find(task => {
+                const taskContent = task.content || '';
+                const actionTask = actionItem.task || '';
+                
+                // Simple matching: check if the action item task is contained in the task content
+                // or if they share significant common words
+                return taskContent.toLowerCase().includes(actionTask.toLowerCase()) ||
+                       actionTask.toLowerCase().includes(taskContent.toLowerCase());
+            });
+            
+            if (matchingTask) {
+                console.log("Found matching task:", matchingTask.uuid, matchingTask.content);
+                
+                // Convert ChatGPT properties to Amplenote format
+                const updateProperties = {};
+                
+                // Handle priority -> important/urgent mapping
+                if (actionItem.priority) {
+                    switch (actionItem.priority) {
+                        case 'important':
+                            updateProperties.important = true;
+                            break;
+                        case 'urgent':
+                            updateProperties.urgent = true;
+                            break;
+                        case 'both':
+                            updateProperties.important = true;
+                            updateProperties.urgent = true;
+                            break;
+                        case 'neither':
+                            // Leave both as false/undefined
+                            break;
+                    }
+                }
+                
+                // Convert ISO date strings to unix timestamps (seconds)
+                if (actionItem.deadline) {
+                    updateProperties.deadline = Math.floor(new Date(actionItem.deadline).getTime() / 1000);
+                }
+                
+                if (actionItem.start) {
+                    updateProperties.startAt = Math.floor(new Date(actionItem.start).getTime() / 1000);
+                    
+                    // Calculate endAt if duration is provided
+                    if (actionItem.duration) {
+                        const durationSeconds = actionItem.duration * 60; // Convert minutes to seconds
+                        updateProperties.endAt = updateProperties.startAt + durationSeconds;
+                    }
+                }
+                
+                console.log("Updating task with properties:", updateProperties);
+                
+                // Update the task in Amplenote
+                if (Object.keys(updateProperties).length > 0) {
+                    await whisperAPI.updateTask(matchingTask.uuid, updateProperties);
+                    console.log("Successfully updated task:", matchingTask.uuid);
+                }
+            } else {
+                console.log("No matching task found for action item:", actionItem.task);
+            }
+        }
+    } catch (error) {
+        console.error("Error in updateTaskPropertiesInAmplenote:", error);
+        throw error;
     }
 }
 

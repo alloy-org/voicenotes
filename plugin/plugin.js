@@ -57,6 +57,21 @@ const plugin = {
             console.log("Cleared justInvokedFromAppOption flag");
             
             return wasJustInvoked;
+        } else if (args[0] === "getCurrentNoteUUID") {
+            // Return the current note UUID
+            console.log("getCurrentNoteUUID returning:", this.context);
+            return this.context;
+        } else if (args[0] === "getNoteTasks") {
+            // Get tasks from the specified note
+            const noteUUID = args[1];
+            console.log("getNoteTasks for note:", noteUUID);
+            return await app.getNoteTasks(noteUUID);
+        } else if (args[0] === "updateTask") {
+            // Update a task with the given properties
+            const taskUUID = args[1];
+            const properties = args[2];
+            console.log("updateTask:", taskUUID, "properties:", properties);
+            return await app.updateTask(taskUUID, properties);
         }
     },
 

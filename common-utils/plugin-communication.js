@@ -64,6 +64,46 @@ class DevPluginCommunicationService extends PluginCommunicationService {
             console.log(this.config.logPrefix, 'Mock: Cleared wasJustInvoked flag');
             
             return result;
+        } else if (method === 'getCurrentNoteUUID') {
+            const mockNoteUUID = 'mock-note-uuid-12345';
+            console.log(this.config.logPrefix, 'Mock: getCurrentNoteUUID returning', mockNoteUUID);
+            return mockNoteUUID;
+        } else if (method === 'getNoteTasks') {
+            const noteUUID = args[0];
+            console.log(this.config.logPrefix, 'Mock: getNoteTasks for note', noteUUID);
+            
+            // Return mock tasks that match common action items
+            const mockTasks = [
+                {
+                    uuid: 'task-uuid-1',
+                    content: 'Call the plumber today to fix the kitchen sink leak before it floods',
+                    important: false,
+                    urgent: false
+                },
+                {
+                    uuid: 'task-uuid-2',
+                    content: 'Sort through and donate outgrown kids\' clothes by Saturday afternoon',
+                    important: false,
+                    urgent: false
+                },
+                {
+                    uuid: 'task-uuid-3',
+                    content: 'Make reservations for Grandma\'s 80th birthday dinner on Sunday at 6 PM',
+                    important: false,
+                    urgent: false
+                }
+            ];
+            
+            console.log(this.config.logPrefix, 'Mock: returning', mockTasks.length, 'tasks');
+            return mockTasks;
+        } else if (method === 'updateTask') {
+            const taskUUID = args[0];
+            const properties = args[1];
+            console.log(this.config.logPrefix, 'Mock: updateTask', taskUUID, 'with properties:', properties);
+            
+            // Simulate successful update
+            console.log(this.config.logPrefix, 'Mock: task updated successfully');
+            return true;
         }
         
         console.log(this.config.logPrefix, 'Unknown method:', method);
