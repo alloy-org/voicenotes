@@ -7,6 +7,7 @@ window.whisperAPI = whisperAPI;
 const recordButton = document.getElementById('recordButton');
 const buttonText = recordButton.querySelector('span');
 const timer = document.getElementById('timer');
+const testButton = document.getElementById('testButton');
 const testButtonText = testButton.querySelector('span');
 let recordingInterval;
 let secondsElapsed = 0;
@@ -125,17 +126,12 @@ async function processAudioRecording(audioBlob) {
                          window.location.protocol === 'file:' ||
                          (window.location.port && (window.location.port.startsWith('3') || window.location.port.startsWith('8') || window.location.port.startsWith('5')));
         
-        console.log("🔍 Environment check:");
-        console.log("  hostname:", window.location.hostname);
-        console.log("  protocol:", window.location.protocol);
-        console.log("  port:", window.location.port);
-        console.log("  isDevMode:", isDevMode);
+
         
         let transcriptionText;
         
         if (isDevMode) {
             // **DEV MODE: Skip audio processing and use mock transcript**
-            console.log("🔧 [DEV] Skipping audio conversion and transcription, using mock text");
             buttonText.textContent = 'Using dev transcript...';
             
             // Simulate some processing time
@@ -146,9 +142,7 @@ I have to call the plumber to fix the kitchen sink leak before it floods.
 Sort through and donate outgrown kids' clothes by Saturday afternoon.
 Grandma's 80th birthday dinner is on Sunday at 6pm. I should also send an invite to the whole family before that.
 I can't start painting the living room until the new curtains arrive. They need to be picked up from the tailor first.
-And it's pretty important to put some money in an investment account.` 
-            
-            console.log("🔧 [DEV] Mock transcript:", transcriptionText);
+And it's pretty important to put some money in an investment account.`;
         } else {
             // **PRODUCTION MODE: Real audio processing**
             // Update status
@@ -239,16 +233,14 @@ ${summaryText}
 ${actionItemsText}`;
 
         // Send the complete analysis to be inserted using the whisper service
-        await whisperAPI.insertText(formattedText);
+        let noteUUID = await whisperAPI.insertText(formattedText);
         
         // **Step 4: Update task properties in Amplenote**
         if (chatGPTData.actionItems && chatGPTData.actionItems.length > 0) {
-            console.log("Updating task properties in Amplenote...");
             buttonText.textContent = 'Updating tasks...';
             
             try {
-                await updateTaskPropertiesInAmplenote(chatGPTData.actionItems);
-                console.log("Task properties updated successfully");
+                await updateTaskPropertiesInAmplenote(noteUUID, chatGPTData.actionItems);
             } catch (error) {
                 console.error("Error updating task properties:", error);
             }
@@ -260,22 +252,105 @@ ${actionItemsText}`;
         await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
     }
 }
+
+// Function to process sample notes (for testing in production)
+async function processSampleNotes() {
+    try {
+        // Update button status
+        testButton.disabled = true;
+        testButton.classList.add('disabled');
+        testButtonText.textContent = 'Processing...';
+        
+        // Disable record button during test processing
+        recordButton.disabled = true;
+        recordButton.classList.add('disabled');
+        
+        // Use the same mock transcript as dev mode
+        const sampleTranscript = `Alright, here's what's happening this week at home:
+Urgent: Call the plumber today to fix the kitchen sink leak before it floods.
+Important: Sort through and donate outgrown kids' clothes by Saturday afternoon.
+Event: Make reservations for Grandma's 80th birthday dinner on Sunday at 6 PM and send the invite to the whole family.
+Reminder: Take my allergy medication every morning and water the balcony herbs on Monday, Wednesday, and Friday.
+Blocked: I can't start painting the living room until the new curtains arrive, and I need to pick them up from the tailor before hanging them.
+Plus, book the mountain cabin for our fall weekend getaway, and after I toss the recycling tonight, shoot Lisa a text to confirm carpools for soccer practice.`;
+
+        // Get API key (real production key)
+        const OPENAI_API_KEY = await whisperAPI.getApiKey();
+        
+        // Update status
+        testButtonText.textContent = 'Summarizing...';
+
         // **Process with real ChatGPT API**
+        const chatGPTData = await processTranscriptWithChatGPT(sampleTranscript, OPENAI_API_KEY);
+
+        // Create formatted content with timestamp (same as real flow)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        
+        // Format the summary
+        const summaryText = chatGPTData.summary && chatGPTData.summary.length > 0 
+            ? chatGPTData.summary.map(point => `- ${point}`).join('\n')
+            : '- No summary available';
+            
+        // Format the action items
+        const actionItemsText = chatGPTData.actionItems && chatGPTData.actionItems.length > 0
+            ? chatGPTData.actionItems.map(item => `- [ ] ${item.task}`).join('\n')
+            : '- [ ] No action items identified';
+        
+        const formattedText = `### ${year}/${month}/${day} voice notes taken at [${hours}:${minutes}] (SAMPLE)
+
+## Original Transcript
+${sampleTranscript}
+
+# Summary
+${summaryText}
+
+# Action Items
+${actionItemsText}`;
+
+        // **Insert using real Amplenote API**
+        testButtonText.textContent = 'Inserting...';
+        let noteUUID = await whisperAPI.insertText(formattedText);
+        
+        // **Update task properties using real Amplenote API**
+        if (chatGPTData.actionItems && chatGPTData.actionItems.length > 0) {
+            testButtonText.textContent = 'Updating tasks...';
+            
+            try {
+                await updateTaskPropertiesInAmplenote(noteUUID, chatGPTData.actionItems);
+            } catch (error) {
+                console.error("Error updating task properties:", error);
+            }
+        }
+        
+        await whisperAPI.showAlert(`Sample notes processed successfully!\n\nSample transcript, summary, and action items have been added to your Voice Notes.`);
+
+    } catch (error) {
+        console.error("Error processing sample notes:", error);
+        await whisperAPI.showAlert('Error processing sample notes: ' + error.message);
+    } finally {
+        // Reset buttons
+        testButton.disabled = false;
+        testButton.classList.remove('disabled');
+        testButtonText.textContent = 'Test with Sample';
+        
+        recordButton.disabled = false;
+        recordButton.classList.remove('disabled');
+    }
+}
 
 // Function to update task properties in Amplenote
-async function updateTaskPropertiesInAmplenote(actionItems) {
+async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
     try {
-        // Get the current note UUID from the whisper service
-        const noteUUID = await whisperAPI.getCurrentNoteUUID();
-        console.log("Getting tasks from note:", noteUUID);
-        
         // Get all tasks from the current note
         const amplenoteTask = await whisperAPI.getNoteTasks(noteUUID);
-        console.log("Found Amplenote tasks:", amplenoteTask);
         
         // Match and update each action item
         for (const actionItem of actionItems) {
-            console.log("Processing action item:", actionItem.task);
             
             // Find matching Amplenote task by content similarity
             const matchingTask = amplenoteTask.find(task => {
@@ -289,8 +364,6 @@ async function updateTaskPropertiesInAmplenote(actionItems) {
             });
             
             if (matchingTask) {
-                console.log("Found matching task:", matchingTask.uuid, matchingTask.content);
-                
                 // Convert ChatGPT properties to Amplenote format
                 const updateProperties = {};
                 
@@ -328,15 +401,10 @@ async function updateTaskPropertiesInAmplenote(actionItems) {
                     }
                 }
                 
-                console.log("Updating task with properties:", updateProperties);
-                
                 // Update the task in Amplenote
                 if (Object.keys(updateProperties).length > 0) {
                     await whisperAPI.updateTask(matchingTask.uuid, updateProperties);
-                    console.log("Successfully updated task:", matchingTask.uuid);
                 }
-            } else {
-                console.log("No matching task found for action item:", actionItem.task);
             }
         }
     } catch (error) {
@@ -398,7 +466,7 @@ async function run() {
     }
 
     recordButton.addEventListener('click', async () => {
-        if (!isRecording) {
+                    if (!isRecording) {
             // Start recording
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -409,6 +477,9 @@ async function run() {
                 timer.style.display = 'block';
                 startTimer();
                 
+                // Disable test button during recording
+                testButton.disabled = true;
+                testButton.classList.add('disabled');
 
                 // Initialize audio context and analyser for visualization
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -457,6 +528,9 @@ async function run() {
                     buttonText.textContent = 'Start Recording';
                     recordButton.disabled = false;
                     recordButton.classList.remove('disabled');
+                    
+                    // Re-enable test button
+                    testButton.disabled = false;
                     testButton.classList.remove('disabled');
                 };
             } else {
@@ -468,7 +542,12 @@ async function run() {
             audioContext.close();
         }
     });
+
+    // Add event listener for test button
+    testButton.addEventListener('click', async () => {
         console.log("🧪 Test button clicked");
+        await processSampleNotes();
+    });
 
     // Now that the event listener is set up, check if we should auto-start
     checkAutoStart();
