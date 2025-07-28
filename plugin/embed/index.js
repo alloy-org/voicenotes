@@ -1,220 +1,14 @@
-// Development Configuration - Inlined
-function loadDevEnvironment() {
-    const devConfig = {
-        OPENAI_API_KEY: 'sk-mock-api-key-for-development-testing'
-    };
-    
-    // Check localStorage for dev API key (primary method)
-    if (typeof localStorage !== 'undefined') {
-        const storedApiKey = localStorage.getItem('DEV_OPENAI_API_KEY');
-        if (storedApiKey) {
-            devConfig.OPENAI_API_KEY = storedApiKey;
-            console.log('🔑 [DEV] Using OpenAI API key from localStorage');
-            return devConfig;
-        }
-    }
-    
-    // Check if variables are injected in window
-    if (typeof window !== 'undefined' && window.DEV_ENV) {
-        if (window.DEV_ENV.OPENAI_API_KEY) {
-            devConfig.OPENAI_API_KEY = window.DEV_ENV.OPENAI_API_KEY;
-            console.log('🔑 [DEV] Using OpenAI API key from window.DEV_ENV');
-            return devConfig;
-        }
-    }
-    
-    console.log('⚠️ [DEV] No API key found, using mock key');
-    console.log('💡 [DEV] Set your API key with: window.pluginAPIDebug.setApiKey("your-key")');
-    return devConfig;
-}
+// Voice Notes Recording - Main Application Logic
 
-function setDevApiKey(apiKey) {
-    if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('DEV_OPENAI_API_KEY', apiKey);
-        console.log('🔑 [DEV] API key saved to localStorage');
-        return true;
-    }
-    return false;
-}
-
-function clearDevApiKey() {
-    if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('DEV_OPENAI_API_KEY');
-        console.log('🔑 [DEV] API key cleared from localStorage');
-        return true;
-    }
-    return false;
-}
-
-// Simple Plugin API Service for Development
-class DevPluginAPIService {
-    constructor() {
-        const devConfig = loadDevEnvironment();
-        this.mockApiKey = devConfig.OPENAI_API_KEY;
-        this.insertedTexts = [];
-        
-        console.log('🔧 [DEV] DevPluginAPIService initialized');
-        console.log('🔑 [DEV] API key source:', this.mockApiKey.startsWith('sk-mock') ? 'mock' : 'environment');
-    }
-    
-    async getApiKey() {
-        console.log('[DEV PLUGIN] Getting API key...');
-        await this.simulateDelay(100);
-        return this.mockApiKey;
-    }
-    
-    async insertText(text) {
-        console.log('[DEV PLUGIN] Inserting text:', text);
-        this.insertedTexts.push({
-            text,
-            timestamp: new Date().toISOString()
-        });
-        await this.simulateDelay(200);
-        console.log('[DEV PLUGIN] Text inserted successfully');
-        return true;
-    }
-    
-    async showAlert(message) {
-        console.log('[DEV PLUGIN] Showing alert:', message);
-        alert(`[DEV MODE] ${message}`);
-        return true;
-    }
-    
-    async simulateDelay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-    
-    setMockApiKey(apiKey) {
-        this.mockApiKey = apiKey;
-        console.log('[DEV PLUGIN] Mock API key updated to:', apiKey.substring(0, 10) + '...');
-    }
-    
-    getInsertedTexts() {
-        return [...this.insertedTexts];
-    }
-    
-    clearInsertedTexts() {
-        this.insertedTexts = [];
-    }
-    
-    getStats() {
-        return {
-            totalInsertions: this.insertedTexts.length,
-            currentApiKey: this.mockApiKey.substring(0, 10) + '...',
-            lastInsertion: this.insertedTexts.length > 0 ? this.insertedTexts[this.insertedTexts.length - 1] : null
-        };
-    }
-}
-
-// Environment Detection
-function detectEnvironment() {
-    const isLocalhost = window.location.hostname === 'localhost' || 
-                       window.location.hostname === '127.0.0.1' || 
-                       window.location.hostname === '::1';
-    
-    const isFileProtocol = window.location.protocol === 'file:';
-    
-    const isDevPort = window.location.port && 
-                     (window.location.port.startsWith('3') || 
-                      window.location.port.startsWith('8') || 
-                      window.location.port.startsWith('5'));
-    
-    if (isLocalhost || isDevPort || isFileProtocol) {
-        console.log('🚀 Running in DEVELOPMENT mode');
-        return 'development';
-    } else {
-        console.log('🌐 Running in PRODUCTION mode');
-        return 'production';
-    }
-}
-
-// Setup the plugin API service
-const environment = detectEnvironment();
-let pluginAPI;
-
-if (environment === 'development') {
-    pluginAPI = new DevPluginAPIService();
-    
-    // Setup debugging utilities
-    window.pluginAPIDebug = {
-        service: pluginAPI,
-        getStats: () => pluginAPI.getStats(),
-        getInsertedTexts: () => pluginAPI.getInsertedTexts(),
-        clearInsertedTexts: () => pluginAPI.clearInsertedTexts(),
-        setMockApiKey: (key) => pluginAPI.setMockApiKey(key),
-        setApiKey: setDevApiKey,
-        clearApiKey: clearDevApiKey,
-        getCurrentApiKey: () => {
-            const config = loadDevEnvironment();
-            const key = config.OPENAI_API_KEY;
-            return key.startsWith('sk-mock') ? '[MOCK KEY]' : key.substring(0, 10) + '...';
-        },
-        showInstructions: () => {
-            console.log('🔧 [DEV] How to set your OpenAI API key:');
-            console.log('1. Get key from: https://platform.openai.com/api-keys');
-            console.log('2. Run: window.pluginAPIDebug.setApiKey("sk-your-key-here")');
-            console.log('3. Refresh the page');
-        },
-        reloadApiKey: () => {
-            const devConfig = loadDevEnvironment();
-            pluginAPI.setMockApiKey(devConfig.OPENAI_API_KEY);
-            return devConfig.OPENAI_API_KEY.startsWith('sk-mock') ? '[MOCK KEY]' : 'Environment key loaded';
-        }
-    };
-    console.log('🔧 Development utilities available at window.pluginAPIDebug');
-    console.log('🔑 Use window.pluginAPIDebug.setApiKey("your-key") to set API key');
-    console.log('💡 Use window.pluginAPIDebug.showInstructions() for help');
-} else {
-    // Production mode - would use real window.callAmplenotePlugin
-    pluginAPI = {
-        async getApiKey() {
-            return await window.callAmplenotePlugin('getApiKey');
-        },
-        async insertText(text) {
-            return await window.callAmplenotePlugin('insertText', text);
-        },
-        async showAlert(message) {
-            return await window.callAmplenotePlugin('showAlert', message);
-        }
-    };
-}
-
-// Make it globally available for debugging
-window.pluginAPI = pluginAPI;
-console.log('Plugin API service initialized:', pluginAPI.constructor?.name || 'Production');
+// Setup the whisper-specific API service
+const whisperAPI = window.setupWhisperAPI();
+window.whisperAPI = whisperAPI;
 
 const recordButton = document.getElementById('recordButton');
 const buttonText = recordButton.querySelector('span');
 const timer = document.getElementById('timer');
 let recordingInterval;
 let secondsElapsed = 0;
-
-// Move the base64ToBlob function from plugin.js
-function base64ToBlob(base64Data) {
-    // Split the base64 string to get the content type and the data
-    const [contentTypeInfo, base64String] = base64Data.split(';base64,');
-    const contentType = contentTypeInfo.split(':')[1];
-
-    const byteCharacters = atob(base64String);
-    const byteArrays = [];
-
-    // Slice the byteCharacters into manageable chunks
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-        const slice = byteCharacters.slice(offset, offset + 512);
-
-        const byteNumbers = new Array(slice.length);
-        for (let i = 0; i < slice.length; i++) {
-            byteNumbers[i] = slice.charCodeAt(i);
-        }
-
-        const byteArray = new Uint8Array(byteNumbers);
-
-        byteArrays.push(byteArray);
-    }
-
-    // Create a Blob from the byteArrays
-    return new Blob(byteArrays, { type: contentType });
-}
 
 // ChatGPT processing function for summarization and task extraction
 async function processTranscriptWithChatGPT(transcript, apiKey) {
@@ -268,7 +62,7 @@ ${transcript}`;
     return chatData.choices[0].message.content.trim();
 }
 
-// Audio processing logic moved from plugin.js
+// Audio processing pipeline
 async function processAudioRecording(audioBlob) {
     const fileSizeMB = audioBlob.size / 1000000;
     
@@ -299,8 +93,8 @@ async function processAudioRecording(audioBlob) {
         // **Step 2: Send the MP3 file to OpenAI's transcription API**
         console.log("whispering...");
         
-        // Get API key from the plugin service
-        const OPENAI_API_KEY = await pluginAPI.getApiKey();
+        // Get API key from the whisper service
+        const OPENAI_API_KEY = await whisperAPI.getApiKey();
         
         const transcriptionFormData = new FormData();
         transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
@@ -326,7 +120,7 @@ async function processAudioRecording(audioBlob) {
         console.log(transcriptionText);
 
         // Update status for ChatGPT processing
-        buttonText.textContent = 'Analyzing with ChatGPT...';
+        buttonText.textContent = 'Summarizing...';
 
         // **Step 3: Process transcript with ChatGPT for summary and tasks**
         console.log("processing with ChatGPT...");
@@ -348,12 +142,12 @@ ${transcriptionText}
 
 ${chatGPTAnalysis}`;
 
-        // Send the complete analysis to be inserted using the plugin service
-        await pluginAPI.insertText(formattedText);
-        await pluginAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscript, summary, and action items have been added to your Voice Notes.`);
+        // Send the complete analysis to be inserted using the whisper service
+        await whisperAPI.insertText(formattedText);
+        await whisperAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscript, summary, and action items have been added to your Voice Notes.`);
 
     } catch (error) {
-        await pluginAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
+        await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
     }
 }
 
@@ -369,7 +163,6 @@ async function run() {
     let options = { mimeType: 'audio/webm' };
     let fileExtension = 'webm';
 
-    // await pluginAPI.showAlert("in run");
     // Check for supported MIME types
     if (!MediaRecorder.isTypeSupported('audio/webm')) {
         if (MediaRecorder.isTypeSupported('audio/mp4')) {
@@ -388,32 +181,25 @@ async function run() {
     }
 
     recordButton.addEventListener('click', async () => {
-        // await pluginAPI.showAlert("in click");
         if (!isRecording) {
             // Start recording
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                // await pluginAPI.showAlert("in mediadevices");
-                // Calling getUserMedia will ask for microphone permission
-                // On iOS this seems to happen every time
-                // Make sure to call close on every "track" of this stream after you're done
-                
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream, options);
                 mediaRecorder.start();
                 isRecording = true;
                 buttonText.textContent = 'Stop Recording';
-                timer.style.display = 'block';  // Show the timer
-                startTimer();  // Start the timer
+                timer.style.display = 'block';
+                startTimer();
 
                 // Initialize audio context and analyser for visualization
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioContext.createMediaStreamSource(stream);
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 2048;
-                analyser.smoothingTimeConstant = 0.85; // Adjust for smoother visualization
+                analyser.smoothingTimeConstant = 0.85;
                 source.connect(analyser);
                 dataArray = new Uint8Array(analyser.fftSize);
-                // await pluginAPI.showAlert("after audio context");
 
                 // Create canvas for visualizer inside the button
                 const canvas = document.createElement('canvas');
@@ -421,20 +207,16 @@ async function run() {
                 canvas.width = recordButton.clientWidth;
                 canvas.height = recordButton.clientHeight;
                 recordButton.appendChild(canvas);
-                // await pluginAPI.showAlert("after canvas");
 
                 drawVisualizer(canvas, analyser, dataArray);
-                // await pluginAPI.showAlert("after draw");
 
                 mediaRecorder.ondataavailable = (e) => {
                     audioChunks.push(e.data);
                 };
 
                 mediaRecorder.onstop = async () => {
-                    // Close the microphone handle to stop the "recording" badge from appearing
-                    // await pluginAPI.showAlert("in stop");
-                    stream.getTracks()
-                      .forEach( track => track.stop() );
+                    // Close the microphone handle
+                    stream.getTracks().forEach(track => track.stop());
                     
                     // Clean up UI
                     cancelAnimationFrame(animationId);
@@ -442,10 +224,10 @@ async function run() {
                     buttonText.textContent = 'Processing...';
                     recordButton.disabled = true;
                     recordButton.classList.add('disabled');
-                    stopTimer();  // Stop the timer
-                    timer.style.display = 'none';  // Hide the timer
+                    stopTimer();
+                    timer.style.display = 'none';
 
-                    // Process the recording directly in the embed
+                    // Process the recording
                     const audioBlob = new Blob(audioChunks, { type: options.mimeType });
                     await processAudioRecording(audioBlob);
                     
@@ -486,8 +268,8 @@ async function run() {
                 canvasCtx.lineWidth = 2;
                 canvasCtx.strokeStyle = '#f57542';
 
-                canvasCtx.shadowBlur = 10; // Adjust the blur radius as desired
-                canvasCtx.shadowColor = '#FF5733'; // Match this to your stroke color
+                canvasCtx.shadowBlur = 10;
+                canvasCtx.shadowColor = '#FF5733';
                 
                 canvasCtx.beginPath();
 
@@ -509,32 +291,16 @@ async function run() {
 
                 canvasCtx.lineTo(WIDTH, HEIGHT/2);
                 canvasCtx.stroke();
-                canvasCtx.shadowBlur = 0; // Reset the blur effect
+                canvasCtx.shadowBlur = 0;
             }
         }
 
         draw();
     }
 
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-
-            reader.onloadend = () => {
-                resolve(reader.result); // This will be a Base64 data URL
-            };
-
-            reader.onerror = (error) => {
-                reject(error);
-            };
-
-            reader.readAsDataURL(blob);
-        });
-    }
-
     function startTimer() {
         secondsElapsed = 0;
-        updateTimer(); // Initial call to set timer to 00:00
+        updateTimer();
         recordingInterval = setInterval(() => {
             secondsElapsed++;
             updateTimer();
@@ -552,6 +318,7 @@ async function run() {
     }
 }
 
+// Initialize the voice recording app
 try {
     run().then((result) => console.log(result));
 } catch(err) {
