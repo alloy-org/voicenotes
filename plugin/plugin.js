@@ -21,7 +21,7 @@ const plugin = {
         } else if (args[0] === "insertText") {
             // Insert the transcribed text into the Voice Notes
             const textToInsert = args[1];
-            let noteHandle = await this.ensureHomeNote(app);
+            let noteHandle = await this.ensureDestinationNote(app);
             app.navigate(`https://www.amplenote.com/notes/${noteHandle.uuid}`);
             await app.insertNoteContent(noteHandle, textToInsert, {atEnd: true});
         } else if (args[0] === "showAlert") {
@@ -30,18 +30,27 @@ const plugin = {
         }
     },
 
-    async ensureHomeNote(app) {
-        let homeNote = await app.findNote({name: "Voice notes", tags: ["system/voice-notes"]});
-        console.log(homeNote);
-        if (!homeNote) {
+    async ensureDestinationNote(app) {
+        // We generate the name of this note based on the current date and time
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const noteTitle = `${year}/${month}/${day} voice notes taken at [${hours}:${minutes}]`;
+        let destinationNote = await app.findNote({name: noteTitle, tags: ["system/voice-notes"]});
+
+        console.log(destinationNote);
+        if (!destinationNote) {
             // If that note does not exist, we create it
-            let homeNoteUUID = await app.createNote("Voice notes", ["system/voice-notes"]);
-            homeNote = await app.findNote({uuid: homeNoteUUID});
-            let contents = await app.getNoteContent({uuid: homeNoteUUID});
+            let destinationNoteUUID = await app.createNote(noteTitle, ["system/voice-notes"]);
+            destinationNote = await app.findNote({uuid: destinationNoteUUID});
+            let contents = await app.getNoteContent({uuid: destinationNoteUUID});
             console.log(contents);
         }
-        this.context = homeNote.uuid;
-        return homeNote;
+        this.context = destinationNote.uuid;
+        return destinationNote;
     },
 
     renderEmbed(app, embedType, noteUUID) {
