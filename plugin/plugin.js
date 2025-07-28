@@ -32,7 +32,7 @@ const plugin = {
 
     },
 
-    async onEmbedCall(app, ...args) {
+        async onEmbedCall(app, ...args) {
         console.log(args);
         
         if (args[0] === "getApiKey") {
@@ -42,35 +42,36 @@ const plugin = {
             // Insert the transcribed text into the Voice Notes
             const textToInsert = args[1];
             let noteHandle = await this.ensureDestinationNote(app);
-            app.navigate(`https://www.amplenote.com/notes/${noteHandle.uuid}`);
+            
+            // NOTE: Navigation breaks promise resolution, so we skip it
+            // User can manually navigate to the note if needed
+            // app.navigate(`https://www.amplenote.com/notes/${noteHandle.uuid}`);
+            
             await app.insertNoteContent(noteHandle, textToInsert, {atEnd: true});
+            return noteHandle.uuid;
         } else if (args[0] === "showAlert") {
             // Show an alert to the user
             await app.alert(args[1]);
+            return true;
         } else if (args[0] === "wasJustInvoked") {
             // Check if this embed was just invoked from appOption
             const wasJustInvoked = this.justInvokedFromAppOption;
-            console.log("wasJustInvoked check:", wasJustInvoked);
             
             // Clear the flag after checking (one-time use)
             this.justInvokedFromAppOption = false;
-            console.log("Cleared justInvokedFromAppOption flag");
             
             return wasJustInvoked;
         } else if (args[0] === "getCurrentNoteUUID") {
             // Return the current note UUID
-            console.log("getCurrentNoteUUID returning:", this.context);
             return this.context;
         } else if (args[0] === "getNoteTasks") {
             // Get tasks from the specified note
             const noteUUID = args[1];
-            console.log("getNoteTasks for note:", noteUUID);
             return await app.getNoteTasks(noteUUID);
         } else if (args[0] === "updateTask") {
             // Update a task with the given properties
             const taskUUID = args[1];
             const properties = args[2];
-            console.log("updateTask:", taskUUID, "properties:", properties);
             return await app.updateTask(taskUUID, properties);
         }
     },
