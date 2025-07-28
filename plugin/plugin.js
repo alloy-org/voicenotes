@@ -4,12 +4,32 @@ import {addWindowVariableToHtmlString} from "../common-utils/embed-helpers.js";
 
 const plugin = {
     context: null,
+    installed: false,
+    justInvokedFromAppOption: false,
 
     async appOption(app) {
-        await app.openEmbed();
+        /* 
+        After we call openEmbed the first time, the plugin will be added to the sidebar.
+        Further calls to this function we are in should now call openEmbed and navigate to the plugin page, 
+        this time with the voice recording starting automatically (no click required).
+        That is possible by passing an argument to openEmbed as per:
+        app.openEmbed
+            Adds a section to the sidebar (or drawer menu on the mobile app), allowing the user to open a full screen embed. The section is only added to the local client instance, and is not synchronized across clients. Updates to the embed arguments (e.g. by calling app.context.updateEmbedArgs) will be persisted, until the user manually removes the plugin section.
+            Arguments: Anything. Will be passed to renderEmbed, after the app argument.
+            Returns: nothing
+        */
+
+        console.log("appOption called, this.installed =", this.installed);
+        
+        // Set flag to indicate this is a fresh invocation from appOption
+        this.justInvokedFromAppOption = true;
+        console.log("Set justInvokedFromAppOption = true");
+        
+        await app.openEmbed(this.installed);
  
-        // The embed section isn't navigated to when calling openEmbed, but can be navigated to with:
+        // The embed section isn't navigated to when calling openEmbed, but can be navigated to with: 
         await app.navigate("https://www.amplenote.com/notes/plugins/" + app.context.pluginUUID);
+
     },
 
     async onEmbedCall(app, ...args) {
@@ -27,6 +47,16 @@ const plugin = {
         } else if (args[0] === "showAlert") {
             // Show an alert to the user
             await app.alert(args[1]);
+        } else if (args[0] === "wasJustInvoked") {
+            // Check if this embed was just invoked from appOption
+            const wasJustInvoked = this.justInvokedFromAppOption;
+            console.log("wasJustInvoked check:", wasJustInvoked);
+            
+            // Clear the flag after checking (one-time use)
+            this.justInvokedFromAppOption = false;
+            console.log("Cleared justInvokedFromAppOption flag");
+            
+            return wasJustInvoked;
         }
     },
 
@@ -53,10 +83,15 @@ const plugin = {
         return destinationNote;
     },
 
-    renderEmbed(app, embedType, noteUUID) {
-        // Only inject the noteUUID since functions are now defined in embed/index.js
-        let htmlWithModules = addWindowVariableToHtmlString(embedHTML, 'noteUUID', noteUUID);
-        return htmlWithModules;
+    renderEmbed(app) {
+        // We no longer pass autoStartRecording via renderEmbed since it doesn't get called again
+        // Instead, the embed will ask the plugin host via onEmbedCall if it was just invoked
+        console.log("renderEmbed called");
+        
+        // Mark as installed for next time
+        this.installed = true;
+        
+        return embedHTML;
     }
 
 }

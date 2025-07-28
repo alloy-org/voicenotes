@@ -12,6 +12,10 @@ class PluginCommunicationService {
     async showAlert(message) {
         throw new Error('showAlert must be implemented');
     }
+    
+    async callPlugin(method, ...args) {
+        throw new Error('callPlugin must be implemented');
+    }
 }
 
 // Development implementation - mocks basic plugin communication
@@ -23,6 +27,9 @@ class DevPluginCommunicationService extends PluginCommunicationService {
             ...config
         };
         this.insertedTexts = [];
+        this.mockFlags = {
+            wasJustInvoked: false  // Mock the plugin's flag state
+        };
         
         console.log('🔧 [DEV] DevPluginCommunicationService initialized');
     }
@@ -44,6 +51,25 @@ class DevPluginCommunicationService extends PluginCommunicationService {
         return true;
     }
     
+    async callPlugin(method, ...args) {
+        console.log(this.config.logPrefix, 'Calling plugin method:', method, 'with args:', args);
+        
+        // Mock implementation for development
+        if (method === 'wasJustInvoked') {
+            const result = this.mockFlags.wasJustInvoked;
+            console.log(this.config.logPrefix, 'Mock: wasJustInvoked returning', result);
+            
+            // Clear the flag after checking (simulate real plugin behavior)
+            this.mockFlags.wasJustInvoked = false;
+            console.log(this.config.logPrefix, 'Mock: Cleared wasJustInvoked flag');
+            
+            return result;
+        }
+        
+        console.log(this.config.logPrefix, 'Unknown method:', method);
+        return false;
+    }
+    
     async simulateDelay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -59,8 +85,15 @@ class DevPluginCommunicationService extends PluginCommunicationService {
     getStats() {
         return {
             totalInsertions: this.insertedTexts.length,
-            lastInsertion: this.insertedTexts.length > 0 ? this.insertedTexts[this.insertedTexts.length - 1] : null
+            lastInsertion: this.insertedTexts.length > 0 ? this.insertedTexts[this.insertedTexts.length - 1] : null,
+            mockFlags: this.mockFlags
         };
+    }
+    
+    // Dev-only method to simulate appOption being called
+    simulateAppOptionCall() {
+        console.log(this.config.logPrefix, 'Simulating appOption call - setting wasJustInvoked = true');
+        this.mockFlags.wasJustInvoked = true;
     }
 }
 
@@ -88,6 +121,15 @@ class ProdPluginCommunicationService extends PluginCommunicationService {
             return await this.callAmplenotePlugin('showAlert', message);
         } catch (error) {
             console.error('Failed to show alert via plugin:', error);
+            throw error;
+        }
+    }
+    
+    async callPlugin(method, ...args) {
+        try {
+            return await this.callAmplenotePlugin(method, ...args);
+        } catch (error) {
+            console.error(`Failed to call plugin method ${method}:`, error);
             throw error;
         }
     }
@@ -158,8 +200,10 @@ function setupPluginCommunication(config = {}) {
             getStats: () => service.getStats(),
             getInsertedTexts: () => service.getInsertedTexts(),
             clearInsertedTexts: () => service.clearInsertedTexts(),
+            simulateAppOptionCall: () => service.simulateAppOptionCall(),
         };
         console.log('🔧 Development utilities available at window.pluginDebug');
+        console.log('🔧 Use window.pluginDebug.simulateAppOptionCall() to test auto-start');
     }
     
     return service;

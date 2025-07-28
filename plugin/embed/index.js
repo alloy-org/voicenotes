@@ -41,7 +41,7 @@ ${transcript}`;
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o-mini',
             messages: [
                 {
                     role: 'user',
@@ -180,6 +180,29 @@ async function run() {
         }
     }
 
+    // Check auto-start after DOM is ready and event listeners are set up
+    async function checkAutoStart() {
+        console.log("Checking if we should auto-start recording...");
+        
+        try {
+            // Ask the plugin host if this embed was just invoked from appOption
+            const wasJustInvoked = await whisperAPI.wasJustInvoked();
+            console.log("wasJustInvoked from appOption:", wasJustInvoked);
+            
+            if (wasJustInvoked) {
+                console.log("Auto-starting recording because plugin was just invoked from appOption...");
+                console.log("recordButton exists:", !!recordButton);
+                console.log("recordButton click function:", typeof recordButton.click);
+                recordButton.click();
+            } else {
+                console.log("Not auto-starting recording - user just revisited the sidebar");
+            }
+        } catch (error) {
+            console.log("Error checking if just invoked:", error);
+            console.log("Not auto-starting recording due to error");
+        }
+    }
+
     recordButton.addEventListener('click', async () => {
         if (!isRecording) {
             // Start recording
@@ -249,6 +272,9 @@ async function run() {
             audioContext.close();
         }
     });
+
+    // Now that the event listener is set up, check if we should auto-start
+    checkAutoStart();
 
     function drawVisualizer(canvas, analyser, dataArray) {
         const canvasCtx = canvas.getContext('2d');

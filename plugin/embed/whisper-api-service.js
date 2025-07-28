@@ -77,6 +77,11 @@ class WhisperAPIService {
         return await this.pluginCommunication.showAlert(message);
     }
     
+    async wasJustInvoked() {
+        console.log('[WHISPER] Checking if plugin was just invoked from appOption...');
+        return await this.pluginCommunication.callPlugin('wasJustInvoked');
+    }
+    
     // Debug utilities
     getStats() {
         return {
@@ -117,10 +122,13 @@ function setupWhisperAPI() {
             },
             // Delegate plugin communication debug methods
             getInsertedTexts: () => pluginCommunication.getInsertedTexts(),
-            clearInsertedTexts: () => pluginCommunication.clearInsertedTexts()
+            clearInsertedTexts: () => pluginCommunication.clearInsertedTexts(),
+            // Testing utilities
+            simulateAppOptionCall: () => pluginCommunication.simulateAppOptionCall ? pluginCommunication.simulateAppOptionCall() : console.log('Not available in production mode')
         };
         console.log('🎤 Whisper debug utilities available at window.whisperDebug');
         console.log('🔑 Use window.whisperDebug.setApiKey("your-key") to set OpenAI API key');
+        console.log('🎬 Use window.whisperDebug.simulateAppOptionCall() to test auto-start');
     }
     
     return whisperAPI;
