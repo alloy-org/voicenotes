@@ -7,6 +7,7 @@ window.whisperAPI = whisperAPI;
 const recordButton = document.getElementById('recordButton');
 const buttonText = recordButton.querySelector('span');
 const timer = document.getElementById('timer');
+const testButtonText = testButton.querySelector('span');
 let recordingInterval;
 let secondsElapsed = 0;
 
@@ -259,6 +260,7 @@ ${actionItemsText}`;
         await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
     }
 }
+        // **Process with real ChatGPT API**
 
 // Function to update task properties in Amplenote
 async function updateTaskPropertiesInAmplenote(actionItems) {
@@ -406,6 +408,7 @@ async function run() {
                 buttonText.textContent = 'Stop Recording';
                 timer.style.display = 'block';
                 startTimer();
+                
 
                 // Initialize audio context and analyser for visualization
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -454,6 +457,7 @@ async function run() {
                     buttonText.textContent = 'Start Recording';
                     recordButton.disabled = false;
                     recordButton.classList.remove('disabled');
+                    testButton.classList.remove('disabled');
                 };
             } else {
                 alert('Your browser does not support audio recording.');
@@ -464,6 +468,7 @@ async function run() {
             audioContext.close();
         }
     });
+        console.log("🧪 Test button clicked");
 
     // Now that the event listener is set up, check if we should auto-start
     checkAutoStart();

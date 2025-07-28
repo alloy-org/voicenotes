@@ -36,6 +36,30 @@
             cursor: not-allowed;
         }
 
+        #testButton {
+            width: 200px;
+            height: 50px;
+            font-size: 16px;
+            font-family: 'Roboto', sans-serif;
+            display: block;
+            margin: 10px 20px;
+            border: none;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+        }
+
+        #testButton:hover {
+            background-color: #45a049;
+        }
+
+        #testButton.disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
         #recordButton span {
             position: absolute;
             top: 50%;
@@ -76,6 +100,10 @@
     <button id="recordButton">
         <div id="timer">00:00</div>
         <span>Start Recording</span>
+    </button>
+    
+    <button id="testButton">
+        <span>Test with Sample</span>
     </button>
     
     <script src="config.js"></script>
