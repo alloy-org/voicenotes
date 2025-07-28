@@ -349,9 +349,11 @@ async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
         // Get all tasks from the current note
         const amplenoteTask = await whisperAPI.getNoteTasks(noteUUID);
         
-        // Match and update each action item
+        // Create mapping between actionItem IDs and matched Amplenote tasks
+        const actionToTaskMap = new Map();
+        
+        // First pass: Match tasks and update properties
         for (const actionItem of actionItems) {
-            
             // Find matching Amplenote task by content similarity
             const matchingTask = amplenoteTask.find(task => {
                 const taskContent = task.content || '';
@@ -364,6 +366,9 @@ async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
             });
             
             if (matchingTask) {
+                // Store the mapping for blocking relationships
+                actionToTaskMap.set(actionItem.id, matchingTask);
+                
                 // Convert ChatGPT properties to Amplenote format
                 const updateProperties = {};
                 
@@ -401,9 +406,40 @@ async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
                     }
                 }
                 
-                // Update the task in Amplenote
+                // Update the task properties in Amplenote
                 if (Object.keys(updateProperties).length > 0) {
                     await whisperAPI.updateTask(matchingTask.uuid, updateProperties);
+                }
+            }
+        }
+        
+        // Second pass: Handle blocking relationships and update content
+        for (const actionItem of actionItems) {
+            const currentTask = actionToTaskMap.get(actionItem.id);
+            
+            if (currentTask && actionItem.blocking && actionItem.blocking.length > 0) {
+                let contentToAdd = '';
+                
+                // Build blocking links for each blocked task
+                for (const blockedId of actionItem.blocking) {
+                    const blockedTask = actionToTaskMap.get(blockedId);
+                    if (blockedTask) {
+                        const blockingLink = `[${blockedTask.uuid}](https://www.amplenote.com/notes/tasks/${blockedTask.uuid}?relation=blocking)`;
+                        contentToAdd += `\n${blockingLink}`;
+                    }
+                }
+                
+                if (contentToAdd) {
+                    // Get current task content and append blocking links
+                    const currentContent = currentTask.content || '';
+                    
+                    // Check if blocking links already exist to avoid duplication
+                    if (!currentContent.includes('?relation=blocking')) {
+                        const updatedContent = currentContent + contentToAdd;
+                        
+                        // Update the task content
+                        await whisperAPI.updateTask(currentTask.uuid, { content: updatedContent });
+                    }
                 }
             }
         }
