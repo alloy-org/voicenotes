@@ -7,8 +7,6 @@ window.whisperAPI = whisperAPI;
 const recordButton = document.getElementById('recordButton');
 const buttonText = recordButton.querySelector('span');
 const timer = document.getElementById('timer');
-const testButton = document.getElementById('testButton');
-const testButtonText = testButton.querySelector('span');
 let recordingInterval;
 let secondsElapsed = 0;
 
@@ -253,95 +251,7 @@ ${actionItemsText}`;
     }
 }
 
-// Function to process sample notes (for testing in production)
-async function processSampleNotes() {
-    try {
-        // Update button status
-        testButton.disabled = true;
-        testButton.classList.add('disabled');
-        testButtonText.textContent = 'Processing...';
-        
-        // Disable record button during test processing
-        recordButton.disabled = true;
-        recordButton.classList.add('disabled');
-        
-        // Use the same mock transcript as dev mode
-        const sampleTranscript = `Alright, here's what's happening this week at home:
-Urgent: Call the plumber today to fix the kitchen sink leak before it floods.
-Important: Sort through and donate outgrown kids' clothes by Saturday afternoon.
-Event: Make reservations for Grandma's 80th birthday dinner on Sunday at 6 PM and send the invite to the whole family.
-Reminder: Take my allergy medication every morning and water the balcony herbs on Monday, Wednesday, and Friday.
-Blocked: I can't start painting the living room until the new curtains arrive, and I need to pick them up from the tailor before hanging them.
-Plus, book the mountain cabin for our fall weekend getaway, and after I toss the recycling tonight, shoot Lisa a text to confirm carpools for soccer practice.`;
 
-        // Get API key (real production key)
-        const OPENAI_API_KEY = await whisperAPI.getApiKey();
-        
-        // Update status
-        testButtonText.textContent = 'Summarizing...';
-
-        // **Process with real ChatGPT API**
-        const chatGPTData = await processTranscriptWithChatGPT(sampleTranscript, OPENAI_API_KEY);
-
-        // Create formatted content with timestamp (same as real flow)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        
-        // Format the summary
-        const summaryText = chatGPTData.summary && chatGPTData.summary.length > 0 
-            ? chatGPTData.summary.map(point => `- ${point}`).join('\n')
-            : '- No summary available';
-            
-        // Format the action items
-        const actionItemsText = chatGPTData.actionItems && chatGPTData.actionItems.length > 0
-            ? chatGPTData.actionItems.map(item => `- [ ] ${item.task}`).join('\n')
-            : '- [ ] No action items identified';
-        
-        const formattedText = `### ${year}/${month}/${day} voice notes taken at [${hours}:${minutes}] (SAMPLE)
-
-## Original Transcript
-${sampleTranscript}
-
-# Summary
-${summaryText}
-
-# Action Items
-${actionItemsText}`;
-
-        // **Insert using real Amplenote API**
-        testButtonText.textContent = 'Inserting...';
-        let noteUUID = await whisperAPI.insertText(formattedText);
-        
-        // **Update task properties using real Amplenote API**
-        if (chatGPTData.actionItems && chatGPTData.actionItems.length > 0) {
-            testButtonText.textContent = 'Updating tasks...';
-            
-            try {
-                await updateTaskPropertiesInAmplenote(noteUUID, chatGPTData.actionItems);
-            } catch (error) {
-                console.error("Error updating task properties:", error);
-            }
-        }
-        
-        await whisperAPI.showAlert(`Sample notes processed successfully!\n\nSample transcript, summary, and action items have been added to your Voice Notes.`);
-
-    } catch (error) {
-        console.error("Error processing sample notes:", error);
-        await whisperAPI.showAlert('Error processing sample notes: ' + error.message);
-    } finally {
-        // Reset buttons
-        testButton.disabled = false;
-        testButton.classList.remove('disabled');
-        testButtonText.textContent = 'Test with Sample';
-        
-        recordButton.disabled = false;
-        recordButton.classList.remove('disabled');
-    }
-}
 
 // Function to update task properties in Amplenote
 async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
@@ -512,10 +422,6 @@ async function run() {
                 buttonText.textContent = 'Stop Recording';
                 timer.style.display = 'block';
                 startTimer();
-                
-                // Disable test button during recording
-                testButton.disabled = true;
-                testButton.classList.add('disabled');
 
                 // Initialize audio context and analyser for visualization
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -564,10 +470,6 @@ async function run() {
                     buttonText.textContent = 'Start Recording';
                     recordButton.disabled = false;
                     recordButton.classList.remove('disabled');
-                    
-                    // Re-enable test button
-                    testButton.disabled = false;
-                    testButton.classList.remove('disabled');
                 };
             } else {
                 alert('Your browser does not support audio recording.');
@@ -577,12 +479,6 @@ async function run() {
             mediaRecorder.stop();
             audioContext.close();
         }
-    });
-
-    // Add event listener for test button
-    testButton.addEventListener('click', async () => {
-        console.log("🧪 Test button clicked");
-        await processSampleNotes();
     });
 
     // Now that the event listener is set up, check if we should auto-start
