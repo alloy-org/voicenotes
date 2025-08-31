@@ -15,7 +15,7 @@ class WhisperAPIService {
     }
     
     loadOpenAIKey() {
-        // Check localStorage for OpenAI API key
+        // Check localStorage for OpenAI API key (highest priority for runtime setting)
         if (typeof localStorage !== 'undefined') {
             const storedApiKey = localStorage.getItem('DEV_OPENAI_API_KEY');
             if (storedApiKey) {
@@ -25,10 +25,17 @@ class WhisperAPIService {
             }
         }
         
-        // Check if variables are injected in window
-        if (typeof window !== 'undefined' && window.DEV_ENV && window.DEV_ENV.OPENAI_API_KEY) {
-            this.apiKey = window.DEV_ENV.OPENAI_API_KEY;
-            console.log('🔑 [WHISPER] Using OpenAI API key from window.DEV_ENV');
+        // Check for environment variables (process.env if available in build context)
+        if (typeof process !== 'undefined' && process.env && process.env.OPENAI_API_KEY) {
+            this.apiKey = process.env.OPENAI_API_KEY;
+            console.log('🔑 [WHISPER] Using OpenAI API key from process.env');
+            return;
+        }
+        
+        // Check for runtime environment variables on window (for browser context)
+        if (typeof window !== 'undefined' && window.WHISPER_ENV && window.WHISPER_ENV.OPENAI_API_KEY) {
+            this.apiKey = window.WHISPER_ENV.OPENAI_API_KEY;
+            console.log('🔑 [WHISPER] Using OpenAI API key from window.WHISPER_ENV');
             return;
         }
         
@@ -36,6 +43,7 @@ class WhisperAPIService {
         this.apiKey = 'sk-mock-openai-key-for-development-testing';
         console.log('⚠️ [WHISPER] No OpenAI API key found, using mock key');
         console.log('💡 [WHISPER] Set your API key with: window.whisperDebug.setApiKey("your-key")');
+        console.log('💡 [WHISPER] Or set window.WHISPER_ENV = {OPENAI_API_KEY: "your-key"} in browser console');
     }
     
     isUsingMockKey() {
@@ -44,6 +52,22 @@ class WhisperAPIService {
     
     async getApiKey() {
         console.log('[WHISPER] Getting OpenAI API key...');
+        
+        // In production (Amplenote plugin environment), get key from plugin settings
+        // In development, use environment variables or localStorage
+        if (this.pluginCommunication && typeof this.pluginCommunication.callPlugin === 'function') {
+            try {
+                const pluginApiKey = await this.pluginCommunication.callPlugin('getApiKey');
+                if (pluginApiKey && pluginApiKey.trim() !== '') {
+                    console.log('🔑 [WHISPER] Using OpenAI API key from plugin settings');
+                    return pluginApiKey;
+                }
+            } catch (error) {
+                console.log('🔍 [WHISPER] Plugin communication failed, falling back to environment variables:', error);
+            }
+        }
+        
+        // Fallback to development environment variables
         return this.apiKey;
     }
     

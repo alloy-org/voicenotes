@@ -104,6 +104,10 @@ class DevPluginCommunicationService extends PluginCommunicationService {
             // Simulate successful update
             console.log(this.config.logPrefix, 'Mock: task updated successfully');
             return true;
+        } else if (method === 'getApiKey') {
+            console.log(this.config.logPrefix, 'Mock: getApiKey - falling back to environment variables');
+            // In development, return null so the whisper service falls back to environment variables
+            return null;
         }
         
         console.log(this.config.logPrefix, 'Unknown method:', method);

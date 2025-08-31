@@ -18,7 +18,7 @@ const plugin = {
             Arguments: Anything. Will be passed to renderEmbed, after the app argument.
             Returns: nothing
         */
-
+        try {
         console.log("appOption called, this.installed =", this.installed);
         
         // Set flag to indicate this is a fresh invocation from appOption
@@ -29,6 +29,12 @@ const plugin = {
  
         // The embed section isn't navigated to when calling openEmbed, but can be navigated to with: 
         await app.navigate("https://www.amplenote.com/notes/plugins/" + app.context.pluginUUID);
+
+        }
+        catch (error) {
+            console.error("Error in appOption:", error);
+            await app.alert("Error in appOption: " + error.message);
+        }
 
     },
 
