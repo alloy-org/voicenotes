@@ -141,13 +141,33 @@ const plugin = {
         console.log(destinationNote);
         if (!destinationNote) {
             // If that note does not exist, we create it
-            let destinationNoteUUID = await app.createNote(noteTitle, ["system/voice-notes"]);
+            let destinationNoteTag = await plugin.getDestinationNoteTag(app);
+
+            let destinationNoteUUID = await app.createNote(noteTitle, [destinationNoteTag]);
             destinationNote = await app.findNote({uuid: destinationNoteUUID});
             let contents = await app.getNoteContent({uuid: destinationNoteUUID});
             console.log(contents);
         }
         this.context = destinationNote.uuid;
         return destinationNote;
+    },
+
+    async getDestinationNoteTag(app) {
+        let destinationNoteTag = app.settings["DESTINATION NOTE TAG"];
+        if (!destinationNoteTag) {
+            destinationNoteTag = "system/voice-notes";
+            let results = await app.prompt("What tag do you want to use for the destination transcript note?", {
+                inputs: [
+                    { label: "Tag", type: "tags", placeholder: "daily-jots"},
+                ]
+            });
+            destinationNoteTag = results;
+            if (!destinationNoteTag) {
+                destinationNoteTag = "daily-jots";
+            }
+            await app.setSetting("DESTINATION NOTE TAG", destinationNoteTag);
+        }
+        return destinationNoteTag;
     },
 
     renderEmbed(app) {
