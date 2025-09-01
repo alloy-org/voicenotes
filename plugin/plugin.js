@@ -7,35 +7,36 @@ const plugin = {
     installed: false,
     justInvokedFromAppOption: false,
 
-    async appOption(app) {
-        /* 
-        After we call openEmbed the first time, the plugin will be added to the sidebar.
-        Further calls to this function we are in should now call openEmbed and navigate to the plugin page, 
-        this time with the voice recording starting automatically (no click required).
-        That is possible by passing an argument to openEmbed as per:
-        app.openEmbed
-            Adds a section to the sidebar (or drawer menu on the mobile app), allowing the user to open a full screen embed. The section is only added to the local client instance, and is not synchronized across clients. Updates to the embed arguments (e.g. by calling app.context.updateEmbedArgs) will be persisted, until the user manually removes the plugin section.
-            Arguments: Anything. Will be passed to renderEmbed, after the app argument.
-            Returns: nothing
-        */
-        try {
-        console.log("appOption called, this.installed =", this.installed);
-        
-        // Set flag to indicate this is a fresh invocation from appOption
-        this.justInvokedFromAppOption = true;
-        console.log("Set justInvokedFromAppOption = true");
-        
-        await app.openEmbed(this.installed);
- 
-        // The embed section isn't navigated to when calling openEmbed, but can be navigated to with: 
-        await app.navigate("https://www.amplenote.com/notes/plugins/" + app.context.pluginUUID);
+    appOption: {
+        "Record voice notes": async (app) => {
+            /* 
+            After we call openEmbed the first time, the plugin will be added to the sidebar.
+            Further calls to this function we are in should now call openEmbed and navigate to the plugin page, 
+            this time with the voice recording starting automatically (no click required).
+            That is possible by passing an argument to openEmbed as per:
+            app.openEmbed
+                Adds a section to the sidebar (or drawer menu on the mobile app), allowing the user to open a full screen embed. The section is only added to the local client instance, and is not synchronized across clients. Updates to the embed arguments (e.g. by calling app.context.updateEmbedArgs) will be persisted, until the user manually removes the plugin section.
+                Arguments: Anything. Will be passed to renderEmbed, after the app argument.
+                Returns: nothing
+            */
+            try {
+            console.log("appOption called, this.installed =", this.installed);
+            
+            // Set flag to indicate this is a fresh invocation from appOption
+            this.justInvokedFromAppOption = true;
+            console.log("Set justInvokedFromAppOption = true");
+            
+            await app.openEmbed(this.installed);
+    
+            // The embed section isn't navigated to when calling openEmbed, but can be navigated to with: 
+            await app.navigate("https://www.amplenote.com/notes/plugins/" + app.context.pluginUUID);
 
+            }
+            catch (error) {
+                console.error("Error in appOption:", error);
+                await app.alert("Error in appOption: " + error.message);
+            }
         }
-        catch (error) {
-            console.error("Error in appOption:", error);
-            await app.alert("Error in appOption: " + error.message);
-        }
-
     },
 
         async onEmbedCall(app, ...args) {
