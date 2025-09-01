@@ -108,6 +108,10 @@ class DevPluginCommunicationService extends PluginCommunicationService {
             console.log(this.config.logPrefix, 'Mock: getApiKey - falling back to environment variables');
             // In development, return null so the whisper service falls back to environment variables
             return null;
+        } else if (method === 'getModel') {
+            console.log(this.config.logPrefix, 'Mock: getModel - using default development model');
+            // In development, return the default model for development
+            return 'gpt-4.1-mini';
         }
         
         console.log(this.config.logPrefix, 'Unknown method:', method);

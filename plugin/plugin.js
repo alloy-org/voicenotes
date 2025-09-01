@@ -20,13 +20,13 @@ const plugin = {
                 Returns: nothing
             */
             try {
-            console.log("appOption called, this.installed =", this.installed);
+            console.log("appOption called, plugin.installed =", plugin.installed);
             
             // Set flag to indicate this is a fresh invocation from appOption
-            this.justInvokedFromAppOption = true;
+            plugin.justInvokedFromAppOption = true;
             console.log("Set justInvokedFromAppOption = true");
             
-            await app.openEmbed(this.installed);
+            await app.openEmbed(plugin.installed);
     
             // The embed section isn't navigated to when calling openEmbed, but can be navigated to with: 
             await app.navigate("https://www.amplenote.com/notes/plugins/" + app.context.pluginUUID);
@@ -44,7 +44,51 @@ const plugin = {
         
         if (args[0] === "getApiKey") {
             // Return the OpenAI API key for transcription
-            return app.settings["OPENAI API KEY"];
+            let apiKey = app.settings["OPENAI API KEY"];
+            if (!apiKey) {
+                let results = await app.prompt("Please enter your OpenAI API key (you can create one at https://platform.openai.com/api-keys)", {
+                    inputs: [
+                        { label: "API Key", type: "text", placeholder: "Enter your OpenAI API key here"},
+                    ]
+                });
+                apiKey = results;
+                await app.setSetting("OPENAI API KEY", apiKey);
+            }
+            return apiKey;
+        } else if (args[0] === "getModel") {
+            // Return the OpenAI model for transcription and chat completion
+            let model = app.settings["OPENAI MODEL"];
+            if (!model) {
+                let results = await app.prompt("Which OpenAI model do you want to use for transcription and chat completion?", {
+                    inputs: [
+                        { label: "Model", type: "select", options: [
+                            { label: "gpt-5 (very slow and very smart)", value: "gpt-5" },
+                            { label: "gpt-5-mini (fast and smart)", value: "gpt-5-mini" },
+                            { label: "gpt-5-nano (very fast and less smart)", value: "gpt-5-nano"},
+                            { label: "gpt-4.1-mini (fast and smart, non-reasoning; recommended 👋)", value: "gpt-4o-mini" },
+                            { label: "gpt-4.1-nano (very fast and less smart, non-reasoning)", value: "gpt-4.1-mini" },
+                            { label: "gpt-4.1 (slow and very smart, non-reasoning)", value: "gpt-4.1" },
+                            { label: "other (enter the model name below)", value: null},
+                        ]},
+                        { label: "Model name", type: "text", placeholder: "Enter another model name here (OPTIONAL)", value: model},
+                    ]
+
+                });
+                let modelFromList = results[0];
+                let modelFromInput = results[1];
+                if (!modelFromList) {
+                    if (!modelFromInput) {
+                        await app.alert("No model selected, using the default one. You can change this at any time on the plugin settings page.");
+                        model = "gpt-4.1-mini";
+                    } else {
+                        model = modelFromInput;
+                    }
+                } else {
+                    model = modelFromList;
+                }
+                await app.setSetting("OPENAI MODEL", model);
+            }
+            return model;
         } else if (args[0] === "insertText") {
             // Insert the transcribed text into the Voice Notes
             const textToInsert = args[1];

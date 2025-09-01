@@ -12,18 +12,19 @@ const ChatGPTProcessor = {
      * Processes transcript with ChatGPT using a two-step approach
      * @param {string} transcript - The transcribed text
      * @param {string} apiKey - OpenAI API key
+     * @param {string} model - OpenAI model to use
      * @returns {Promise<Object>} Parsed response with summary and action items
      */
-    async processTranscript(transcript, apiKey) {
+    async processTranscript(transcript, apiKey, model = 'gpt-4.1-mini') {
         console.log("Processing transcript with ChatGPT (two-step approach)...");
         
         // Step 1: Get basic summary and task list
         console.log("Step 1: Getting basic summary and task list...");
-        const basicAnalysis = await this._getBasicAnalysis(transcript, apiKey);
+        const basicAnalysis = await this._getBasicAnalysis(transcript, apiKey, model);
         
         // Step 2: Get detailed task analysis with priorities, dates, and dependencies
         console.log("Step 2: Getting detailed task analysis...");
-        const detailedAnalysis = await this._getDetailedAnalysis(transcript, basicAnalysis, apiKey);
+        const detailedAnalysis = await this._getDetailedAnalysis(transcript, basicAnalysis, apiKey, model);
         
         return detailedAnalysis;
     },
@@ -34,10 +35,10 @@ const ChatGPTProcessor = {
      * @param {string} apiKey - OpenAI API key
      * @returns {Promise<Object>} Basic analysis with summary and simple task list
      */
-    async _getBasicAnalysis(transcript, apiKey) {
+    async _getBasicAnalysis(transcript, apiKey, model) {
         UIManager.updateButtonText('Creating summary...');
         const prompt = this._buildBasicAnalysisPrompt(transcript);
-        const rawResponse = await this._sendChatGPTRequest(prompt, apiKey);
+        const rawResponse = await this._sendChatGPTRequest(prompt, apiKey, model);
         return this._parseResponse(rawResponse);
     },
 
@@ -48,10 +49,10 @@ const ChatGPTProcessor = {
      * @param {string} apiKey - OpenAI API key
      * @returns {Promise<Object>} Detailed analysis with priorities, dates, and dependencies
      */
-    async _getDetailedAnalysis(transcript, basicAnalysis, apiKey) {
+    async _getDetailedAnalysis(transcript, basicAnalysis, apiKey, model) {
         UIManager.updateButtonText('Analyzing tasks...');
         const prompt = this._buildDetailedAnalysisPrompt(transcript, basicAnalysis);
-        const rawResponse = await this._sendChatGPTRequest(prompt, apiKey);
+        const rawResponse = await this._sendChatGPTRequest(prompt, apiKey, model);
         return this._parseResponse(rawResponse);
     },
 
@@ -137,9 +138,10 @@ ${transcript}`;
      * Sends request to ChatGPT API
      * @param {string} prompt - The prompt to send
      * @param {string} apiKey - OpenAI API key
+     * @param {string} model - OpenAI model to use
      * @returns {Promise<string>} Raw response from ChatGPT
      */
-    async _sendChatGPTRequest(prompt, apiKey) {
+    async _sendChatGPTRequest(prompt, apiKey, model = 'gpt-4.1-mini') {
         const chatResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -147,7 +149,7 @@ ${transcript}`;
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: 'gpt-4o-mini',
+                model: model,
                 messages: [
                     {
                         role: 'user',
@@ -223,6 +225,7 @@ const AudioProcessor = {
         try {
             // Check if we're in development mode (based on environment detection)
             const OPENAI_API_KEY = await whisperAPI.getApiKey();
+            const OPENAI_MODEL = await whisperAPI.getModel();
             const isDevMode = this._isDevMode();
             
             let transcriptionText;
@@ -235,7 +238,7 @@ const AudioProcessor = {
 
             // Process transcript with ChatGPT (two-step approach)
             console.log("processing with ChatGPT (two-step approach)...");
-            const chatGPTData = await ChatGPTProcessor.processTranscript(transcriptionText, OPENAI_API_KEY);
+            const chatGPTData = await ChatGPTProcessor.processTranscript(transcriptionText, OPENAI_API_KEY, OPENAI_MODEL);
             console.log("ChatGPT data:", chatGPTData);
 
             // Create and insert formatted content

@@ -52,23 +52,61 @@ class WhisperAPIService {
     
     async getApiKey() {
         console.log('[WHISPER] Getting OpenAI API key...');
+        console.log('[WHISPER] Plugin communication available:', !!this.pluginCommunication);
+        console.log('[WHISPER] Plugin communication callPlugin method:', typeof this.pluginCommunication?.callPlugin);
         
         // In production (Amplenote plugin environment), get key from plugin settings
         // In development, use environment variables or localStorage
         if (this.pluginCommunication && typeof this.pluginCommunication.callPlugin === 'function') {
             try {
+                console.log('[WHISPER] Attempting to get API key from plugin communication...');
                 const pluginApiKey = await this.pluginCommunication.callPlugin('getApiKey');
+                console.log('[WHISPER] Plugin communication returned API key:', pluginApiKey ? `${pluginApiKey.substring(0, 10)}...` : 'null/empty');
+                
                 if (pluginApiKey && pluginApiKey.trim() !== '') {
                     console.log('🔑 [WHISPER] Using OpenAI API key from plugin settings');
                     return pluginApiKey;
                 }
+                
+                // In production, if no API key is set in plugin settings, throw an error
+                console.error('🚨 [WHISPER] No OpenAI API key found in plugin settings');
+                throw new Error('No OpenAI API key configured. Please set your API key in the plugin settings.');
+                
             } catch (error) {
                 console.log('🔍 [WHISPER] Plugin communication failed, falling back to environment variables:', error);
+                // If plugin communication fails entirely, fall back to development variables
+            }
+        } else {
+            console.log('[WHISPER] Plugin communication not available, using fallback');
+        }
+        
+        // Fallback to development environment variables (only for development)
+        if (this.isUsingMockKey()) {
+            console.log('🔧 [WHISPER] Using development mock key');
+        }
+        console.log('[WHISPER] Returning API key:', this.apiKey ? `${this.apiKey.substring(0, 10)}...` : 'null');
+        return this.apiKey;
+    }
+    
+    async getModel() {
+        console.log('[WHISPER] Getting OpenAI model...');
+        
+        // In production (Amplenote plugin environment), get model from plugin settings
+        // In development, use the mock value
+        if (this.pluginCommunication && typeof this.pluginCommunication.callPlugin === 'function') {
+            try {
+                const pluginModel = await this.pluginCommunication.callPlugin('getModel');
+                if (pluginModel && pluginModel.trim() !== '') {
+                    console.log('🤖 [WHISPER] Using OpenAI model from plugin settings:', pluginModel);
+                    return pluginModel;
+                }
+            } catch (error) {
+                console.log('🔍 [WHISPER] Plugin communication failed for model, falling back to default:', error);
             }
         }
         
-        // Fallback to development environment variables
-        return this.apiKey;
+        // Fallback to default model
+        return 'gpt-4.1-mini';
     }
     
     setApiKey(apiKey) {
