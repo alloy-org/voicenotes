@@ -9,64 +9,127 @@ window.whisperAPI = whisperAPI;
 // =============================================================================
 const ChatGPTProcessor = {
     /**
-     * Processes transcript with ChatGPT for summarization and task extraction
+     * Processes transcript with ChatGPT using a two-step approach
      * @param {string} transcript - The transcribed text
      * @param {string} apiKey - OpenAI API key
      * @returns {Promise<Object>} Parsed response with summary and action items
      */
     async processTranscript(transcript, apiKey) {
-        console.log("Processing transcript with ChatGPT...");
+        console.log("Processing transcript with ChatGPT (two-step approach)...");
         
-        const prompt = this._buildPrompt(transcript);
+        // Step 1: Get basic summary and task list
+        console.log("Step 1: Getting basic summary and task list...");
+        const basicAnalysis = await this._getBasicAnalysis(transcript, apiKey);
+        
+        // Step 2: Get detailed task analysis with priorities, dates, and dependencies
+        console.log("Step 2: Getting detailed task analysis...");
+        const detailedAnalysis = await this._getDetailedAnalysis(transcript, basicAnalysis, apiKey);
+        
+        return detailedAnalysis;
+    },
+
+    /**
+     * First ChatGPT request: Basic summary and task extraction
+     * @param {string} transcript - The transcribed text
+     * @param {string} apiKey - OpenAI API key
+     * @returns {Promise<Object>} Basic analysis with summary and simple task list
+     */
+    async _getBasicAnalysis(transcript, apiKey) {
+        UIManager.updateButtonText('Creating summary...');
+        const prompt = this._buildBasicAnalysisPrompt(transcript);
         const rawResponse = await this._sendChatGPTRequest(prompt, apiKey);
         return this._parseResponse(rawResponse);
     },
 
     /**
-     * Builds the prompt for ChatGPT processing
-     * @param {string} transcript - The transcribed text
-     * @returns {string} The formatted prompt
+     * Second ChatGPT request: Detailed task analysis
+     * @param {string} transcript - The original transcribed text
+     * @param {Object} basicAnalysis - Results from first analysis
+     * @param {string} apiKey - OpenAI API key
+     * @returns {Promise<Object>} Detailed analysis with priorities, dates, and dependencies
      */
-    _buildPrompt(transcript) {
+    async _getDetailedAnalysis(transcript, basicAnalysis, apiKey) {
+        UIManager.updateButtonText('Analyzing tasks...');
+        const prompt = this._buildDetailedAnalysisPrompt(transcript, basicAnalysis);
+        const rawResponse = await this._sendChatGPTRequest(prompt, apiKey);
+        return this._parseResponse(rawResponse);
+    },
+
+    /**
+     * Builds the prompt for basic analysis (Step 1)
+     * @param {string} transcript - The transcribed text
+     * @returns {string} The formatted prompt for basic analysis
+     */
+    _buildBasicAnalysisPrompt(transcript) {
+        return `Please analyze the following voice note transcript and provide:
+
+1. **Summary**: A concise summary in 3-5 bullet points capturing the main topics and key information
+2. **Action Items**: A simple list of tasks mentioned in the transcript. Look for tasks implied in the transcript even if the user doesn't explicitly say "I need to do this" or "this is a task". Sometimes a sentence might contain two or more different tasks. Try to extract tasks with medium granularity, that is don't make tasks too small and atomic, but also not too broad. When you extract a task, try to look for clues as to wether a task is in fact two hidden tasks, eg. if something needs to happen before something else (a task blocking another one) and make sure to include both tasks in your list.
+
+Please format your response as JSON:
+
+{
+    "summary": ["bullet point 1", "bullet point 2", "bullet point 3"],
+    "actionItems": ["task 1", "task 2", "task 3"]
+}
+
+Transcript:
+${transcript}`;
+    },
+
+    /**
+     * Builds the prompt for detailed analysis (Step 2)
+     * @param {string} transcript - The original transcribed text
+     * @param {Object} basicAnalysis - Results from first analysis
+     * @returns {string} The formatted prompt for detailed analysis
+     */
+    _buildDetailedAnalysisPrompt(transcript, basicAnalysis) {
         const now = new Date();
         const currentDateTime = now.toISOString();
         
         return `The current date and time is: ${currentDateTime}
 
-Please analyze the following voice note transcript and provide:
+You previously analyzed a voice note and created this summary and basic task list:
 
-1. **Summary**: A concise summary in 3-5 bullet points capturing the main topics and key information
-2. **Action Items**: 
-You will generate a JSON after the following rules:
-2.1. First, extract all events or things that have a specific, explicit start date or start date and time. We call these events.
-2.2. Then, extract all action items that have deadlines. We call these deadlines.
-2.3. Then extract all tasks that don't have explicit dates attached to them. Some of these tasks can be "preparation for an event" so keep that in mind.
-3.4 Then, assign importance and urgency to every task that doesn't have a deadline or start date.
-3.5. Then, think which tasks BLOCK other tasks on the list.
+SUMMARY:
+${basicAnalysis.summary.map(point => `- ${point}`).join('\n')}
+
+BASIC TASKS:
+${basicAnalysis.actionItems.map((task, index) => `${index + 1}. ${task}`).join('\n')}
+
+Now, please re-examine the ORIGINAL voice note transcript below and enhance the task analysis by:
+
+1. Looking for clues about task importance and urgency in the original text. Some tasks might be marked as both important and urgent implicitly or explicitly in the transcript, so pay attention to that.
+2. Identifying any explicit or implicit start dates and deadlines and task durations
+3. Finding tasks that need to happen BEFORE other tasks (dependencies/blocking relationships)
+
+If necessary, add more tasks to the list to make sure we show task blocking relationships.
+
+Rules for analysis:
+- ONLY apply start dates, deadlines, durations when they are explicitly mentioned or strongly implied in the transcript
+- All dates should be relative to the current date and time mentioned above
+- Look for words like "before", "after", "first", "then", "urgent", "important", "ASAP", "today", "tomorrow", etc.
+- Dependencies should be based on logical task ordering mentioned in the transcript, so examples where a task needs to happen before another task in order for the second task to be possible to start.
+
 
 Please format your response exactly like this:
 
-// JSON FORMAT ALWAYS
-// All time fields are date time strings in a format that can be parsed by JavaScript's Date constructor
-// All durations are parsable by whatever javascript library you use to parse durations. 
-// All dates deduced from the transcript are relative to the current date and time mentioned above
-// ONLY apply start dates, deadlines, durations when they are explicitly mentioned in the transcript
 {
     "summary": ["bullet point 1", "bullet point 2", "bullet point 3"],
     "actionItems": [
         {
-            "id": "1", // unique id for the action item, must be a string, required
-            "task": "Task 1", // the task description, must be a string, required
-            "priority": "important" | "urgent" | "neither" | "both", // the priority of the task, must be a string, required
-            "deadline": "2025-01-01T00:00:00.000Z", // the deadline of the task, must be a date time string, optional
-            "start": "2025-01-01T00:00:00.000Z", // the start time of the task, must be a date time string, optional
-            "duration": 1, // in minutes, optional
-            "blocking": ["2", "3"] // the ids of the tasks that this task is blocking, must be an array of strings, optional
+            "id": "1",
+            "task": "Task description",
+            "priority": "important" | "urgent" | "neither" | "both",
+            "deadline": "2025-01-01T00:00:00.000Z", // optional - only if mentioned/implied
+            "start": "2025-01-01T00:00:00.000Z", // optional - only if mentioned/implied  
+            "duration": 60, // in minutes, optional - only if mentioned/implied
+            "blocking": ["2", "3"] // optional - IDs of tasks this blocks
         }
     ]
 }
 
-Transcript:
+ORIGINAL TRANSCRIPT:
 ${transcript}`;
     },
 
@@ -91,7 +154,7 @@ ${transcript}`;
                         content: prompt
                     }
                 ],
-                temperature: 0.3
+                // temperature: 0.3
             })
         });
 
@@ -122,6 +185,11 @@ ${transcript}`;
                 jsonString = match[1].trim();
                 console.log("Extracted JSON from code block");
             }
+            
+            // Remove JavaScript-style comments that ChatGPT sometimes includes
+            jsonString = jsonString
+                .replace(/\/\/.*$/gm, '')  // Remove single-line comments
+                .replace(/\/\*[\s\S]*?\*\//g, '');  // Remove multi-line comments
             
             console.log("JSON to parse:", jsonString);
             
@@ -165,9 +233,8 @@ const AudioProcessor = {
                 transcriptionText = await this._processProductionAudio(audioBlob, OPENAI_API_KEY);
             }
 
-            // Process transcript with ChatGPT
-            UIManager.updateButtonText('Summarizing...');
-            console.log("processing with ChatGPT...");
+            // Process transcript with ChatGPT (two-step approach)
+            console.log("processing with ChatGPT (two-step approach)...");
             const chatGPTData = await ChatGPTProcessor.processTranscript(transcriptionText, OPENAI_API_KEY);
             console.log("ChatGPT data:", chatGPTData);
 
