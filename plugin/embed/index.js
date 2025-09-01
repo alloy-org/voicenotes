@@ -4,20 +4,34 @@
 const whisperAPI = window.setupWhisperAPI();
 window.whisperAPI = whisperAPI;
 
-const recordButton = document.getElementById('recordButton');
-const buttonText = recordButton.querySelector('span');
-const timer = document.getElementById('timer');
-let recordingInterval;
-let secondsElapsed = 0;
+// =============================================================================
+// CHATGPT PROCESSING MODULE
+// =============================================================================
+const ChatGPTProcessor = {
+    /**
+     * Processes transcript with ChatGPT for summarization and task extraction
+     * @param {string} transcript - The transcribed text
+     * @param {string} apiKey - OpenAI API key
+     * @returns {Promise<Object>} Parsed response with summary and action items
+     */
+    async processTranscript(transcript, apiKey) {
+        console.log("Processing transcript with ChatGPT...");
+        
+        const prompt = this._buildPrompt(transcript);
+        const rawResponse = await this._sendChatGPTRequest(prompt, apiKey);
+        return this._parseResponse(rawResponse);
+    },
 
-// ChatGPT processing function for summarization and task extraction
-async function processTranscriptWithChatGPT(transcript, apiKey) {
-    console.log("Processing transcript with ChatGPT...");
-    
-    const now = new Date();
-    const currentDateTime = now.toISOString();
-    
-    const prompt = `The current date and time is: ${currentDateTime}
+    /**
+     * Builds the prompt for ChatGPT processing
+     * @param {string} transcript - The transcribed text
+     * @returns {string} The formatted prompt
+     */
+    _buildPrompt(transcript) {
+        const now = new Date();
+        const currentDateTime = now.toISOString();
+        
+        return `The current date and time is: ${currentDateTime}
 
 Please analyze the following voice note transcript and provide:
 
@@ -54,154 +68,221 @@ Please format your response exactly like this:
 
 Transcript:
 ${transcript}`;
+    },
 
-    const chatResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'user',
-                    content: prompt
-                }
-            ],
-            // max_tokens: 500,
-            temperature: 0.3
-        })
-    });
+    /**
+     * Sends request to ChatGPT API
+     * @param {string} prompt - The prompt to send
+     * @param {string} apiKey - OpenAI API key
+     * @returns {Promise<string>} Raw response from ChatGPT
+     */
+    async _sendChatGPTRequest(prompt, apiKey) {
+        const chatResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                temperature: 0.3
+            })
+        });
 
-    if (!chatResponse.ok) {
-        const errorData = await chatResponse.json();
-        throw new Error(errorData.error.message || 'Error during ChatGPT processing.');
-    }
-
-    const chatData = await chatResponse.json();
-    const rawResponse = chatData.choices[0].message.content.trim();
-    
-    try {
-        // Extract JSON from potential markdown code blocks
-        let jsonString = rawResponse;
-        
-        // Check if wrapped in triple backticks with optional "json" language specifier
-        const codeBlockRegex = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
-        const match = jsonString.match(codeBlockRegex);
-        
-        if (match) {
-            jsonString = match[1].trim();
-            console.log("Extracted JSON from code block");
+        if (!chatResponse.ok) {
+            const errorData = await chatResponse.json();
+            throw new Error(errorData.error.message || 'Error during ChatGPT processing.');
         }
-        
-        console.log("JSON to parse:", jsonString);
-        
-        // Parse the JSON response
-        const parsed = JSON.parse(jsonString);
-        return parsed;
-    } catch (error) {
-        console.error("Failed to parse ChatGPT JSON response:", error);
-        console.log("Raw response:", rawResponse);
-        
-        // Fallback: return a basic structure
-        return {
-            summary: ["Error parsing ChatGPT response"],
-            actionItems: []
-        };
+
+        const chatData = await chatResponse.json();
+        return chatData.choices[0].message.content.trim();
+    },
+
+    /**
+     * Parses the raw response from ChatGPT
+     * @param {string} rawResponse - Raw response from ChatGPT
+     * @returns {Object} Parsed response with summary and action items
+     */
+    _parseResponse(rawResponse) {
+        try {
+            // Extract JSON from potential markdown code blocks
+            let jsonString = rawResponse;
+            
+            // Check if wrapped in triple backticks with optional "json" language specifier
+            const codeBlockRegex = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
+            const match = jsonString.match(codeBlockRegex);
+            
+            if (match) {
+                jsonString = match[1].trim();
+                console.log("Extracted JSON from code block");
+            }
+            
+            console.log("JSON to parse:", jsonString);
+            
+            // Parse the JSON response
+            const parsed = JSON.parse(jsonString);
+            return parsed;
+        } catch (error) {
+            console.error("Failed to parse ChatGPT JSON response:", error);
+            console.log("Raw response:", rawResponse);
+            
+            // Fallback: return a basic structure
+            return {
+                summary: ["Error parsing ChatGPT response"],
+                actionItems: []
+            };
+        }
     }
-}
+};
 
-// Audio processing pipeline
-async function processAudioRecording(audioBlob) {
-    const fileSizeMB = audioBlob.size / 1000000;
-    
-    try {
-        // Check if we're in development mode (based on environment detection)
-        const OPENAI_API_KEY = await whisperAPI.getApiKey();
-        const isDevMode = window.location.hostname === 'localhost' || 
-                         window.location.hostname === '127.0.0.1' || 
-                         window.location.protocol === 'file:' ||
-                         (window.location.port && (window.location.port.startsWith('3') || window.location.port.startsWith('8') || window.location.port.startsWith('5')));
+// =============================================================================
+// AUDIO PROCESSING MODULE
+// =============================================================================
+const AudioProcessor = {
+    /**
+     * Processes audio recording through the complete pipeline
+     * @param {Blob} audioBlob - The recorded audio blob
+     */
+    async processAudioRecording(audioBlob) {
+        const fileSizeMB = audioBlob.size / 1000000;
         
+        try {
+            // Check if we're in development mode (based on environment detection)
+            const OPENAI_API_KEY = await whisperAPI.getApiKey();
+            const isDevMode = this._isDevMode();
+            
+            let transcriptionText;
+            
+            if (isDevMode) {
+                transcriptionText = await this._getDevModeTranscript();
+            } else {
+                transcriptionText = await this._processProductionAudio(audioBlob, OPENAI_API_KEY);
+            }
 
-        
-        let transcriptionText;
-        
-        if (isDevMode) {
-            // **DEV MODE: Skip audio processing and use mock transcript**
-            buttonText.textContent = 'Using dev transcript...';
+            // Process transcript with ChatGPT
+            UIManager.updateButtonText('Summarizing...');
+            console.log("processing with ChatGPT...");
+            const chatGPTData = await ChatGPTProcessor.processTranscript(transcriptionText, OPENAI_API_KEY);
+            console.log("ChatGPT data:", chatGPTData);
+
+            // Create and insert formatted content
+            const formattedText = this._formatContent(transcriptionText, chatGPTData);
+            const noteUUID = await whisperAPI.insertText(formattedText);
             
-            // Simulate some processing time
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Update task properties in Amplenote
+            if (chatGPTData.actionItems && chatGPTData.actionItems.length > 0) {
+                UIManager.updateButtonText('Updating tasks...');
+                
+                try {
+                    await AmplenoteTaskManager.updateTaskProperties(noteUUID, chatGPTData.actionItems);
+                } catch (error) {
+                    console.error("Error updating task properties:", error);
+                }
+            }
             
-            transcriptionText = `Alright, here's what's happening this week at home:
+            await whisperAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscript, summary, and action items have been added to your Voice Notes.`);
+
+        } catch (error) {
+            await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
+        }
+    },
+
+    /**
+     * Checks if application is running in development mode
+     * @returns {boolean} True if in development mode
+     */
+    _isDevMode() {
+        return window.location.hostname === 'localhost' || 
+               window.location.hostname === '127.0.0.1' || 
+               window.location.protocol === 'file:' ||
+               (window.location.port && (window.location.port.startsWith('3') || window.location.port.startsWith('8') || window.location.port.startsWith('5')));
+    },
+
+    /**
+     * Gets mock transcript for development mode
+     * @returns {Promise<string>} Mock transcript text
+     */
+    async _getDevModeTranscript() {
+        UIManager.updateButtonText('Using dev transcript...');
+        
+        // Simulate some processing time
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        return `Alright, here's what's happening this week at home:
 I have to call the plumber to fix the kitchen sink leak before it floods.
 Sort through and donate outgrown kids' clothes by Saturday afternoon.
 Grandma's 80th birthday dinner is on Sunday at 6pm. I should also send an invite to the whole family before that.
 I can't start painting the living room until the new curtains arrive. They need to be picked up from the tailor first.
 And it's pretty important to put some money in an investment account.`;
-        } else {
-            // **PRODUCTION MODE: Real audio processing**
-            // Update status
-            buttonText.textContent = 'Converting...';
+    },
 
-            // **Step 1: Send the audio blob to be converted to mp3**
-            console.log("converting...");
-            const conversionFormData = new FormData();
-            conversionFormData.append('file', audioBlob, `recording.webm`);
-            
-            const conversionResponse = await fetch('https://amplenote-plugins-cors-anywhere.onrender.com/https://audioconvert.onrender.com/convert', {
-                method: 'POST',
-                body: conversionFormData,
-            });
-            
-            if (!conversionResponse.ok) {
-                const errorData = await conversionResponse.json();
-                throw new Error(errorData.error || 'Error during audio conversion.');
-            }
-            
-            const mp3Blob = await conversionResponse.blob();
-
-            // Update status
-            buttonText.textContent = 'Transcribing...';
-
-            // **Step 2: Send the MP3 file to OpenAI's transcription API**
-            console.log("whispering...");
-            
-            const transcriptionFormData = new FormData();
-            transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
-            transcriptionFormData.append('model', 'whisper-1');
-            
-            const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                },
-                body: transcriptionFormData,
-            });
-            
-            if (!transcriptionResponse.ok) {
-                console.log("not ok...");
-                const errorData = await transcriptionResponse.json();
-                throw new Error(errorData.error.message || 'Error during transcription.');
-            }
-            
-            console.log("ok...");
-            const transcriptionData = await transcriptionResponse.json();
-            transcriptionText = transcriptionData.text;
-            console.log(transcriptionText);
+    /**
+     * Processes audio in production mode (real audio processing)
+     * @param {Blob} audioBlob - The recorded audio blob
+     * @param {string} apiKey - OpenAI API key
+     * @returns {Promise<string>} Transcribed text
+     */
+    async _processProductionAudio(audioBlob, apiKey) {
+        // Step 1: Convert audio to MP3
+        UIManager.updateButtonText('Converting...');
+        console.log("converting...");
+        
+        const conversionFormData = new FormData();
+        conversionFormData.append('file', audioBlob, `recording.webm`);
+        
+        const conversionResponse = await fetch('https://amplenote-plugins-cors-anywhere.onrender.com/https://audioconvert.onrender.com/convert', {
+            method: 'POST',
+            body: conversionFormData,
+        });
+        
+        if (!conversionResponse.ok) {
+            const errorData = await conversionResponse.json();
+            throw new Error(errorData.error || 'Error during audio conversion.');
         }
+        
+        const mp3Blob = await conversionResponse.blob();
 
-        // Update status for ChatGPT processing
-        buttonText.textContent = 'Summarizing...';
+        // Step 2: Transcribe with OpenAI Whisper
+        UIManager.updateButtonText('Transcribing...');
+        console.log("whispering...");
+        
+        const transcriptionFormData = new FormData();
+        transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
+        transcriptionFormData.append('model', 'whisper-1');
+        
+        const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: transcriptionFormData,
+        });
+        
+        if (!transcriptionResponse.ok) {
+            console.log("not ok...");
+            const errorData = await transcriptionResponse.json();
+            throw new Error(errorData.error.message || 'Error during transcription.');
+        }
+        
+        console.log("ok...");
+        const transcriptionData = await transcriptionResponse.json();
+        console.log(transcriptionData.text);
+        return transcriptionData.text;
+    },
 
-        // **Step 3: Process transcript with ChatGPT for summary and tasks**
-        console.log("processing with ChatGPT...");
-        const chatGPTData = await processTranscriptWithChatGPT(transcriptionText, OPENAI_API_KEY);
-        console.log("ChatGPT data:", chatGPTData);
-
-        // Create formatted content with timestamp
+    /**
+     * Formats content for insertion into note
+     * @param {string} transcriptionText - The transcribed text
+     * @param {Object} chatGPTData - Processed data from ChatGPT
+     * @returns {string} Formatted content
+     */
+    _formatContent(transcriptionText, chatGPTData) {
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -219,7 +300,7 @@ And it's pretty important to put some money in an investment account.`;
             ? chatGPTData.actionItems.map(item => `- [ ] ${item.task}`).join('\n')
             : '- [ ] No action items identified';
         
-        const formattedText = `### ${year}/${month}/${day} voice notes taken at [${hours}:${minutes}]
+        return `### ${year}/${month}/${day} voice notes taken at [${hours}:${minutes}]
 
 ## Original Transcript
 ${transcriptionText}
@@ -229,40 +310,48 @@ ${summaryText}
 
 # Action Items
 ${actionItemsText}`;
-
-        // Send the complete analysis to be inserted using the whisper service
-        let noteUUID = await whisperAPI.insertText(formattedText);
-        
-        // **Step 4: Update task properties in Amplenote**
-        if (chatGPTData.actionItems && chatGPTData.actionItems.length > 0) {
-            buttonText.textContent = 'Updating tasks...';
-            
-            try {
-                await updateTaskPropertiesInAmplenote(noteUUID, chatGPTData.actionItems);
-            } catch (error) {
-                console.error("Error updating task properties:", error);
-            }
-        }
-        
-        await whisperAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscript, summary, and action items have been added to your Voice Notes.`);
-
-    } catch (error) {
-        await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
     }
-}
+};
 
 
 
-// Function to update task properties in Amplenote
-async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
-    try {
-        // Get all tasks from the current note
-        const amplenoteTask = await whisperAPI.getNoteTasks(noteUUID);
-        
-        // Create mapping between actionItem IDs and matched Amplenote tasks
+// =============================================================================
+// AMPLENOTE TASK MANAGER MODULE
+// =============================================================================
+const AmplenoteTaskManager = {
+    /**
+     * Updates task properties in Amplenote based on ChatGPT analysis
+     * @param {string} noteUUID - UUID of the note containing tasks
+     * @param {Array} actionItems - Array of action items from ChatGPT
+     */
+    async updateTaskProperties(noteUUID, actionItems) {
+        try {
+            // Get all tasks from the current note
+            const amplenoteTask = await whisperAPI.getNoteTasks(noteUUID);
+            
+            // Create mapping between actionItem IDs and matched Amplenote tasks
+            const actionToTaskMap = this._mapActionItemsToTasks(actionItems, amplenoteTask);
+            
+            // Update task properties
+            await this._updateTaskProperties(actionItems, actionToTaskMap);
+            
+            // Handle blocking relationships
+            await this._updateBlockingRelationships(actionItems, actionToTaskMap);
+        } catch (error) {
+            console.error("Error in updateTaskProperties:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * Maps action items to existing Amplenote tasks
+     * @param {Array} actionItems - Array of action items from ChatGPT
+     * @param {Array} amplenoteTask - Array of existing Amplenote tasks
+     * @returns {Map} Mapping between action item IDs and Amplenote tasks
+     */
+    _mapActionItemsToTasks(actionItems, amplenoteTask) {
         const actionToTaskMap = new Map();
         
-        // First pass: Match tasks and update properties
         for (const actionItem of actionItems) {
             // Find matching Amplenote task by content similarity
             const matchingTask = amplenoteTask.find(task => {
@@ -276,45 +365,24 @@ async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
             });
             
             if (matchingTask) {
-                // Store the mapping for blocking relationships
                 actionToTaskMap.set(actionItem.id, matchingTask);
-                
-                // Convert ChatGPT properties to Amplenote format
-                const updateProperties = {};
-                
-                // Handle priority -> important/urgent mapping
-                if (actionItem.priority) {
-                    switch (actionItem.priority) {
-                        case 'important':
-                            updateProperties.important = true;
-                            break;
-                        case 'urgent':
-                            updateProperties.urgent = true;
-                            break;
-                        case 'both':
-                            updateProperties.important = true;
-                            updateProperties.urgent = true;
-                            break;
-                        case 'neither':
-                            // Leave both as false/undefined
-                            break;
-                    }
-                }
-                
-                // Convert ISO date strings to unix timestamps (seconds)
-                if (actionItem.deadline) {
-                    updateProperties.deadline = Math.floor(new Date(actionItem.deadline).getTime() / 1000);
-                }
-                
-                if (actionItem.start) {
-                    updateProperties.startAt = Math.floor(new Date(actionItem.start).getTime() / 1000);
-                    
-                    // Calculate endAt if duration is provided
-                    if (actionItem.duration) {
-                        const durationSeconds = actionItem.duration * 60; // Convert minutes to seconds
-                        updateProperties.endAt = updateProperties.startAt + durationSeconds;
-                    }
-                }
+            }
+        }
+        
+        return actionToTaskMap;
+    },
+
+    /**
+     * Updates properties for matched tasks
+     * @param {Array} actionItems - Array of action items from ChatGPT
+     * @param {Map} actionToTaskMap - Mapping between action items and tasks
+     */
+    async _updateTaskProperties(actionItems, actionToTaskMap) {
+        for (const actionItem of actionItems) {
+            const matchingTask = actionToTaskMap.get(actionItem.id);
+            
+            if (matchingTask) {
+                const updateProperties = this._convertActionItemToTaskProperties(actionItem);
                 
                 // Update the task properties in Amplenote
                 if (Object.keys(updateProperties).length > 0) {
@@ -322,196 +390,253 @@ async function updateTaskPropertiesInAmplenote(noteUUID, actionItems) {
                 }
             }
         }
+    },
+
+    /**
+     * Converts action item properties to Amplenote task properties format
+     * @param {Object} actionItem - Action item from ChatGPT
+     * @returns {Object} Properties formatted for Amplenote
+     */
+    _convertActionItemToTaskProperties(actionItem) {
+        const updateProperties = {};
         
-        // Second pass: Handle blocking relationships and update content
+        // Handle priority -> important/urgent mapping
+        if (actionItem.priority) {
+            switch (actionItem.priority) {
+                case 'important':
+                    updateProperties.important = true;
+                    break;
+                case 'urgent':
+                    updateProperties.urgent = true;
+                    break;
+                case 'both':
+                    updateProperties.important = true;
+                    updateProperties.urgent = true;
+                    break;
+                case 'neither':
+                    // Leave both as false/undefined
+                    break;
+            }
+        }
+        
+        // Convert ISO date strings to unix timestamps (seconds)
+        if (actionItem.deadline) {
+            updateProperties.deadline = Math.floor(new Date(actionItem.deadline).getTime() / 1000);
+        }
+        
+        if (actionItem.start) {
+            updateProperties.startAt = Math.floor(new Date(actionItem.start).getTime() / 1000);
+            
+            // Calculate endAt if duration is provided
+            if (actionItem.duration) {
+                const durationSeconds = actionItem.duration * 60; // Convert minutes to seconds
+                updateProperties.endAt = updateProperties.startAt + durationSeconds;
+            }
+        }
+        
+        return updateProperties;
+    },
+
+    /**
+     * Updates blocking relationships between tasks
+     * @param {Array} actionItems - Array of action items from ChatGPT
+     * @param {Map} actionToTaskMap - Mapping between action items and tasks
+     */
+    async _updateBlockingRelationships(actionItems, actionToTaskMap) {
         for (const actionItem of actionItems) {
             const currentTask = actionToTaskMap.get(actionItem.id);
             
             if (currentTask && actionItem.blocking && actionItem.blocking.length > 0) {
-                let contentToAdd = '';
-                
-                // Build blocking links for each blocked task
-                for (const blockedId of actionItem.blocking) {
-                    const blockedTask = actionToTaskMap.get(blockedId);
-                    if (blockedTask) {
-                        const blockingLink = `[${blockedTask.uuid}](https://www.amplenote.com/notes/tasks/${blockedTask.uuid}?relation=blocking)`;
-                        contentToAdd += `\n${blockingLink}`;
-                    }
-                }
+                const contentToAdd = this._buildBlockingLinks(actionItem.blocking, actionToTaskMap);
                 
                 if (contentToAdd) {
-                    // Get current task content and append blocking links
-                    const currentContent = currentTask.content || '';
-                    
-                    // Check if blocking links already exist to avoid duplication
-                    if (!currentContent.includes('?relation=blocking')) {
-                        const updatedContent = currentContent + contentToAdd;
-                        
-                        // Update the task content
-                        await whisperAPI.updateTask(currentTask.uuid, { content: updatedContent });
-                    }
+                    await this._updateTaskContentWithBlockingLinks(currentTask, contentToAdd);
                 }
             }
         }
-    } catch (error) {
-        console.error("Error in updateTaskPropertiesInAmplenote:", error);
-        throw error;
-    }
-}
+    },
 
-async function run() {
-    let mediaRecorder;
-    let audioChunks = [];
-    let isRecording = false;
-    let audioContext;
-    let analyser;
-    let dataArray;
-    let animationId;
-    // Initialize variables for MIME type and file extension
-    let options = { mimeType: 'audio/webm' };
-    let fileExtension = 'webm';
-
-    // Check for supported MIME types
-    if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            options = { mimeType: 'audio/mp4' };
-            fileExtension = 'mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
-            options = { mimeType: 'audio/mpeg' };
-            fileExtension = 'mp3';
-        } else if (MediaRecorder.isTypeSupported('audio/wav')) {
-            options = { mimeType: 'audio/wav' };
-            fileExtension = 'wav';
-        } else {
-            alert('No supported audio MIME types found.');
-            return;
-        }
-    }
-
-    // Check auto-start after DOM is ready and event listeners are set up
-    async function checkAutoStart() {
-        console.log("Checking if we should auto-start recording...");
+    /**
+     * Builds blocking links for tasks
+     * @param {Array} blockedIds - Array of blocked task IDs
+     * @param {Map} actionToTaskMap - Mapping between action items and tasks
+     * @returns {string} Content to add with blocking links
+     */
+    _buildBlockingLinks(blockedIds, actionToTaskMap) {
+        let contentToAdd = '';
         
-        try {
-            // Ask the plugin host if this embed was just invoked from appOption
-            const wasJustInvoked = await whisperAPI.wasJustInvoked();
-            console.log("wasJustInvoked from appOption:", wasJustInvoked);
-            
-            if (wasJustInvoked) {
-                console.log("Auto-starting recording because plugin was just invoked from appOption...");
-                console.log("recordButton exists:", !!recordButton);
-                console.log("recordButton click function:", typeof recordButton.click);
-                recordButton.click();
-            } else {
-                console.log("Not auto-starting recording - user just revisited the sidebar");
+        for (const blockedId of blockedIds) {
+            const blockedTask = actionToTaskMap.get(blockedId);
+            if (blockedTask) {
+                const blockingLink = `[${blockedTask.uuid}](https://www.amplenote.com/notes/tasks/${blockedTask.uuid}?relation=blocking)`;
+                contentToAdd += `\n${blockingLink}`;
             }
-        } catch (error) {
-            console.log("Error checking if just invoked:", error);
-            console.log("Not auto-starting recording due to error");
+        }
+        
+        return contentToAdd;
+    },
+
+    /**
+     * Updates task content with blocking links
+     * @param {Object} task - The task to update
+     * @param {string} contentToAdd - Content to add
+     */
+    async _updateTaskContentWithBlockingLinks(task, contentToAdd) {
+        const currentContent = task.content || '';
+        
+        // Check if blocking links already exist to avoid duplication
+        if (!currentContent.includes('?relation=blocking')) {
+            const updatedContent = currentContent + contentToAdd;
+            
+            // Update the task content
+            await whisperAPI.updateTask(task.uuid, { content: updatedContent });
         }
     }
+};
 
-    recordButton.addEventListener('click', async () => {
-                    if (!isRecording) {
-            // Start recording
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream, options);
-                mediaRecorder.start();
-                isRecording = true;
-                buttonText.textContent = 'Stop Recording';
-                timer.style.display = 'block';
-                startTimer();
+// =============================================================================
+// AUDIO RECORDING MODULE
+// =============================================================================
+const AudioRecorder = {
+    mediaRecorder: null,
+    audioChunks: [],
+    isRecording: false,
+    audioContext: null,
+    analyser: null,
+    dataArray: null,
+    animationId: null,
+    options: { mimeType: 'audio/webm' },
+    fileExtension: 'webm',
 
-                // Initialize audio context and analyser for visualization
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioContext.createMediaStreamSource(stream);
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 2048;
-                analyser.smoothingTimeConstant = 0.85;
-                source.connect(analyser);
-                dataArray = new Uint8Array(analyser.fftSize);
-
-                // Create canvas for visualizer inside the button
-                const canvas = document.createElement('canvas');
-                canvas.id = 'visualizer';
-                canvas.width = recordButton.clientWidth;
-                canvas.height = recordButton.clientHeight;
-                recordButton.appendChild(canvas);
-
-                drawVisualizer(canvas, analyser, dataArray);
-
-                mediaRecorder.ondataavailable = (e) => {
-                    audioChunks.push(e.data);
-                };
-
-                mediaRecorder.onstop = async () => {
-                    // Close the microphone handle
-                    stream.getTracks().forEach(track => track.stop());
-                    
-                    // Clean up UI
-                    cancelAnimationFrame(animationId);
-                    recordButton.removeChild(canvas);
-                    buttonText.textContent = 'Processing...';
-                    recordButton.disabled = true;
-                    recordButton.classList.add('disabled');
-                    stopTimer();
-                    timer.style.display = 'none';
-
-                    // Process the recording
-                    const audioBlob = new Blob(audioChunks, { type: options.mimeType });
-                    await processAudioRecording(audioBlob);
-                    
-                    // Clean up data structures
-                    audioChunks = [];
-                    isRecording = false;
-                    
-                    // Reset UI
-                    buttonText.textContent = 'Start Recording';
-                    recordButton.disabled = false;
-                    recordButton.classList.remove('disabled');
-                };
+    /**
+     * Initializes the audio recorder with supported MIME types
+     */
+    init() {
+        // Check for supported MIME types
+        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+            if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                this.options = { mimeType: 'audio/mp4' };
+                this.fileExtension = 'mp4';
+            } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+                this.options = { mimeType: 'audio/mpeg' };
+                this.fileExtension = 'mp3';
+            } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+                this.options = { mimeType: 'audio/wav' };
+                this.fileExtension = 'wav';
             } else {
-                alert('Your browser does not support audio recording.');
+                throw new Error('No supported audio MIME types found.');
             }
-        } else {
-            // Stop recording
-            mediaRecorder.stop();
-            audioContext.close();
         }
-    });
+    },
 
-    // Now that the event listener is set up, check if we should auto-start
-    checkAutoStart();
+    /**
+     * Starts audio recording
+     * @param {Function} onDataAvailable - Callback for when data is available
+     * @param {Function} onStop - Callback for when recording stops
+     * @returns {Promise<Object>} Audio context and canvas for visualization
+     */
+    async startRecording(onDataAvailable, onStop) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Your browser does not support audio recording.');
+        }
 
-    function drawVisualizer(canvas, analyser, dataArray) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.mediaRecorder = new MediaRecorder(stream, this.options);
+        this.mediaRecorder.start();
+        this.isRecording = true;
+
+        // Initialize audio context and analyser for visualization
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = this.audioContext.createMediaStreamSource(stream);
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 2048;
+        this.analyser.smoothingTimeConstant = 0.85;
+        source.connect(this.analyser);
+        this.dataArray = new Uint8Array(this.analyser.fftSize);
+
+        this.mediaRecorder.ondataavailable = (e) => {
+            this.audioChunks.push(e.data);
+            if (onDataAvailable) onDataAvailable(e);
+        };
+
+        this.mediaRecorder.onstop = async () => {
+            // Close the microphone handle
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Process the recording
+            const audioBlob = new Blob(this.audioChunks, { type: this.options.mimeType });
+            
+            // Clean up data structures
+            this.audioChunks = [];
+            this.isRecording = false;
+            
+            if (onStop) await onStop(audioBlob);
+        };
+
+        return {
+            audioContext: this.audioContext,
+            analyser: this.analyser,
+            dataArray: this.dataArray
+        };
+    },
+
+    /**
+     * Stops audio recording
+     */
+    stopRecording() {
+        if (this.mediaRecorder && this.isRecording) {
+            this.mediaRecorder.stop();
+            if (this.audioContext) {
+                this.audioContext.close();
+            }
+        }
+    },
+
+    /**
+     * Creates and manages audio visualization canvas
+     * @param {HTMLElement} container - Container element for the canvas
+     * @returns {HTMLCanvasElement} The created canvas element
+     */
+    createVisualizationCanvas(container) {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'visualizer';
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+        container.appendChild(canvas);
+        return canvas;
+    },
+
+    /**
+     * Draws audio visualization
+     * @param {HTMLCanvasElement} canvas - Canvas element to draw on
+     */
+    drawVisualization(canvas) {
         const canvasCtx = canvas.getContext('2d');
         const WIDTH = canvas.width;
         const HEIGHT = canvas.height;
         let updateInterval = 0;
 
-        function draw() {
-            animationId = requestAnimationFrame(draw);
+        const draw = () => {
+            this.animationId = requestAnimationFrame(draw);
 
             if (updateInterval++ % 2 === 0) {
-                analyser.getByteTimeDomainData(dataArray);
+                this.analyser.getByteTimeDomainData(this.dataArray);
 
                 canvasCtx.fillStyle = '#f7fffa';
                 canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
 
                 canvasCtx.lineWidth = 2;
                 canvasCtx.strokeStyle = '#f57542';
-
                 canvasCtx.shadowBlur = 10;
                 canvasCtx.shadowColor = '#FF5733';
                 
                 canvasCtx.beginPath();
 
-                let sliceWidth = WIDTH * 1.0 / dataArray.length;
+                let sliceWidth = WIDTH * 1.0 / this.dataArray.length;
                 let x = 0;
 
-                for(let i = 0; i < dataArray.length; i++) {
-                    let v = dataArray[i] / 128.0;
+                for(let i = 0; i < this.dataArray.length; i++) {
+                    let v = this.dataArray[i] / 128.0;
                     let y = v * HEIGHT/2;
 
                     if(i === 0) {
@@ -527,29 +652,245 @@ async function run() {
                 canvasCtx.stroke();
                 canvasCtx.shadowBlur = 0;
             }
-        }
+        };
 
         draw();
-    }
+    },
 
-    function startTimer() {
-        secondsElapsed = 0;
-        updateTimer();
-        recordingInterval = setInterval(() => {
-            secondsElapsed++;
-            updateTimer();
+    /**
+     * Stops visualization animation
+     */
+    stopVisualization() {
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+    }
+};
+
+// =============================================================================
+// UI MANAGER MODULE
+// =============================================================================
+const UIManager = {
+    recordButton: document.getElementById('recordButton'),
+    buttonText: null,
+    timer: document.getElementById('timer'),
+    recordingInterval: null,
+    secondsElapsed: 0,
+
+    /**
+     * Initializes UI components
+     */
+    init() {
+        this.buttonText = this.recordButton.querySelector('span');
+    },
+
+    /**
+     * Updates button text
+     * @param {string} text - Text to display
+     */
+    updateButtonText(text) {
+        this.buttonText.textContent = text;
+    },
+
+    /**
+     * Sets button disabled state
+     * @param {boolean} disabled - Whether button should be disabled
+     */
+    setButtonDisabled(disabled) {
+        this.recordButton.disabled = disabled;
+        if (disabled) {
+            this.recordButton.classList.add('disabled');
+        } else {
+            this.recordButton.classList.remove('disabled');
+        }
+    },
+
+    /**
+     * Shows/hides timer
+     * @param {boolean} show - Whether to show timer
+     */
+    showTimer(show) {
+        this.timer.style.display = show ? 'block' : 'none';
+    },
+
+    /**
+     * Starts the recording timer
+     */
+    startTimer() {
+        this.secondsElapsed = 0;
+        this.updateTimerDisplay();
+        this.recordingInterval = setInterval(() => {
+            this.secondsElapsed++;
+            this.updateTimerDisplay();
         }, 1000);
-    }
+    },
 
-    function stopTimer() {
-        clearInterval(recordingInterval);
-    }
+    /**
+     * Stops the recording timer
+     */
+    stopTimer() {
+        if (this.recordingInterval) {
+            clearInterval(this.recordingInterval);
+            this.recordingInterval = null;
+        }
+    },
 
-    function updateTimer() {
-        const minutes = Math.floor(secondsElapsed / 60);
-        const seconds = secondsElapsed % 60;
-        timer.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    /**
+     * Updates timer display
+     */
+    updateTimerDisplay() {
+        const minutes = Math.floor(this.secondsElapsed / 60);
+        const seconds = this.secondsElapsed % 60;
+        this.timer.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    },
+
+    /**
+     * Adds canvas to record button
+     * @param {HTMLCanvasElement} canvas - Canvas to add
+     */
+    addCanvasToButton(canvas) {
+        this.recordButton.appendChild(canvas);
+    },
+
+    /**
+     * Removes canvas from record button
+     * @param {HTMLCanvasElement} canvas - Canvas to remove
+     */
+    removeCanvasFromButton(canvas) {
+        if (this.recordButton.contains(canvas)) {
+            this.recordButton.removeChild(canvas);
+        }
     }
+};
+
+// =============================================================================
+// MAIN APPLICATION CONTROLLER
+// =============================================================================
+const VoiceNotesApp = {
+    canvas: null,
+
+    /**
+     * Initializes the voice notes application
+     */
+    async init() {
+        try {
+            // Initialize all modules
+            AudioRecorder.init();
+            UIManager.init();
+            
+            // Set up event listeners
+            this._setupEventListeners();
+            
+            // Check if we should auto-start recording
+            await this._checkAutoStart();
+        } catch (error) {
+            console.error("Error initializing app:", error);
+            await whisperAPI.showAlert('Error initializing voice notes app: ' + error.message);
+        }
+    },
+
+    /**
+     * Sets up event listeners for the application
+     */
+    _setupEventListeners() {
+        UIManager.recordButton.addEventListener('click', async () => {
+            if (!AudioRecorder.isRecording) {
+                await this._startRecording();
+            } else {
+                this._stopRecording();
+            }
+        });
+    },
+
+    /**
+     * Starts audio recording
+     */
+    async _startRecording() {
+        try {
+            const { analyser, dataArray } = await AudioRecorder.startRecording(
+                null, // onDataAvailable callback
+                async (audioBlob) => await this._onRecordingStop(audioBlob)
+            );
+
+            // Update UI for recording state
+            UIManager.updateButtonText('Stop Recording');
+            UIManager.showTimer(true);
+            UIManager.startTimer();
+
+            // Create and start visualization
+            this.canvas = AudioRecorder.createVisualizationCanvas(UIManager.recordButton);
+            AudioRecorder.drawVisualization(this.canvas);
+
+        } catch (error) {
+            console.error("Error starting recording:", error);
+            await whisperAPI.showAlert('Error starting recording: ' + error.message);
+        }
+    },
+
+    /**
+     * Stops audio recording
+     */
+    _stopRecording() {
+        AudioRecorder.stopRecording();
+    },
+
+    /**
+     * Handles recording stop event
+     * @param {Blob} audioBlob - The recorded audio blob
+     */
+    async _onRecordingStop(audioBlob) {
+        // Clean up UI
+        AudioRecorder.stopVisualization();
+        if (this.canvas) {
+            UIManager.removeCanvasFromButton(this.canvas);
+            this.canvas = null;
+        }
+        
+        UIManager.updateButtonText('Processing...');
+        UIManager.setButtonDisabled(true);
+        UIManager.stopTimer();
+        UIManager.showTimer(false);
+
+        try {
+            // Process the recording through the audio pipeline
+            await AudioProcessor.processAudioRecording(audioBlob);
+        } catch (error) {
+            console.error("Error processing recording:", error);
+        } finally {
+            // Reset UI regardless of processing outcome
+            UIManager.updateButtonText('Start Recording');
+            UIManager.setButtonDisabled(false);
+        }
+    },
+
+    /**
+     * Checks if recording should auto-start
+     */
+    async _checkAutoStart() {
+        console.log("Checking if we should auto-start recording...");
+        
+        try {
+            // Ask the plugin host if this embed was just invoked from appOption
+            const wasJustInvoked = await whisperAPI.wasJustInvoked();
+            console.log("wasJustInvoked from appOption:", wasJustInvoked);
+            
+            if (wasJustInvoked) {
+                console.log("Auto-starting recording because plugin was just invoked from appOption...");
+                UIManager.recordButton.click();
+            } else {
+                console.log("Not auto-starting recording - user just revisited the sidebar");
+            }
+        } catch (error) {
+            console.log("Error checking if just invoked:", error);
+            console.log("Not auto-starting recording due to error");
+        }
+    }
+};
+
+// Legacy run function for backward compatibility
+async function run() {
+    await VoiceNotesApp.init();
 }
 
 // Initialize the voice recording app
