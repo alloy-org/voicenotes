@@ -256,7 +256,7 @@ const AudioProcessor = {
                 }
             }
             
-            await whisperAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscript, summary, and action items have been added to your Voice Notes.`);
+            await whisperAPI.showAlert(`Voice note processed successfully! Audio file size: ${fileSizeMB}MB\n\nTranscription, summary, and action items have been added to your Voice Notes.`);
 
         } catch (error) {
             await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
@@ -299,31 +299,12 @@ And it's pretty important to put some money in an investment account.`;
      * @returns {Promise<string>} Transcribed text
      */
     async _processProductionAudio(audioBlob, apiKey) {
-        // Step 1: Convert audio to MP3
-        UIManager.updateButtonText('Converting...');
-        console.log("converting...");
-        
-        const conversionFormData = new FormData();
-        conversionFormData.append('file', audioBlob, `recording.webm`);
-        
-        const conversionResponse = await fetch('https://amplenote-plugins-cors-anywhere.onrender.com/https://audioconvert.onrender.com/convert', {
-            method: 'POST',
-            body: conversionFormData,
-        });
-        
-        if (!conversionResponse.ok) {
-            const errorData = await conversionResponse.json();
-            throw new Error(errorData.error || 'Error during audio conversion.');
-        }
-        
-        const mp3Blob = await conversionResponse.blob();
-
-        // Step 2: Transcribe with OpenAI Whisper
+        // Transcribe with OpenAI Whisper
         UIManager.updateButtonText('Transcribing...');
-        console.log("whispering...");
+        console.log("Transcribing audio with Whisper...");
         
         const transcriptionFormData = new FormData();
-        transcriptionFormData.append('file', mp3Blob, 'recording.mp3');
+        transcriptionFormData.append('file', audioBlob, 'recording.webm');
         transcriptionFormData.append('model', 'whisper-1');
         
         const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -335,12 +316,12 @@ And it's pretty important to put some money in an investment account.`;
         });
         
         if (!transcriptionResponse.ok) {
-            console.log("not ok...");
+            console.log("Transcription failed...");
             const errorData = await transcriptionResponse.json();
             throw new Error(errorData.error.message || 'Error during transcription.');
         }
         
-        console.log("ok...");
+        console.log("Transcription successful...");
         const transcriptionData = await transcriptionResponse.json();
         console.log(transcriptionData.text);
         return transcriptionData.text;
