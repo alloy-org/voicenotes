@@ -260,6 +260,9 @@ const AudioProcessor = {
 
         } catch (error) {
             await whisperAPI.showAlert('Error: ' + error.message + '\n\nAudio file size: ' + fileSizeMB + 'MB');
+        } finally {
+            // Release wake lock now that entire processing flow is complete
+            await WakeLockManager.release();
         }
     },
 
@@ -816,6 +819,73 @@ const UIManager = {
 };
 
 // =============================================================================
+// WAKE LOCK MANAGER
+// =============================================================================
+const WakeLockManager = {
+    wakeLock: null,
+
+    /**
+     * Requests wake lock to keep screen on
+     * @returns {Promise<boolean>} True if wake lock was acquired
+     */
+    async acquire() {
+        try {
+            if ('wakeLock' in navigator) {
+                this.wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Wake lock acquired - screen will stay on');
+                
+                // Handle wake lock release (e.g., when user switches tabs)
+                this.wakeLock.addEventListener('release', () => {
+                    console.log('Wake lock was released');
+                });
+                
+                return true;
+            } else {
+                console.warn('Wake Lock API not supported in this browser');
+                return false;
+            }
+        } catch (error) {
+            console.error('Failed to acquire wake lock:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Releases the wake lock to allow screen to turn off
+     */
+    async release() {
+        try {
+            if (this.wakeLock) {
+                await this.wakeLock.release();
+                this.wakeLock = null;
+                console.log('Wake lock released - screen can turn off normally');
+            }
+        } catch (error) {
+            console.error('Failed to release wake lock:', error);
+        }
+    },
+
+    /**
+     * Checks if wake lock is currently active
+     * @returns {boolean} True if wake lock is active
+     */
+    isActive() {
+        return this.wakeLock && !this.wakeLock.released;
+    },
+
+    /**
+     * Re-acquires wake lock if it was previously active but got released
+     * (e.g., when user returns to tab)
+     */
+    async reacquireIfNeeded() {
+        if (this.wakeLock && this.wakeLock.released) {
+            console.log('Wake lock was released, attempting to re-acquire...');
+            await this.acquire();
+        }
+    }
+};
+
+// =============================================================================
 // MAIN APPLICATION CONTROLLER
 // =============================================================================
 const VoiceNotesApp = {
@@ -832,6 +902,9 @@ const VoiceNotesApp = {
             
             // Set up event listeners
             this._setupEventListeners();
+            
+            // Set up page visibility handling for wake lock
+            this._setupPageVisibilityHandling();
             
             // Check if we should auto-start recording
             await this._checkAutoStart();
@@ -855,10 +928,25 @@ const VoiceNotesApp = {
     },
 
     /**
+     * Sets up page visibility handling to manage wake lock
+     */
+    _setupPageVisibilityHandling() {
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible') {
+                // User returned to tab, try to re-acquire wake lock if needed
+                await WakeLockManager.reacquireIfNeeded();
+            }
+        });
+    },
+
+    /**
      * Starts audio recording
      */
     async _startRecording() {
         try {
+            // Acquire wake lock to keep screen on during entire process
+            await WakeLockManager.acquire();
+            
             const { analyser, dataArray } = await AudioRecorder.startRecording(
                 null, // onDataAvailable callback
                 async (audioBlob) => await this._onRecordingStop(audioBlob)
@@ -875,6 +963,8 @@ const VoiceNotesApp = {
 
         } catch (error) {
             console.error("Error starting recording:", error);
+            // Release wake lock if recording failed to start
+            await WakeLockManager.release();
             await whisperAPI.showAlert('Error starting recording: ' + error.message);
         }
     },
@@ -908,6 +998,8 @@ const VoiceNotesApp = {
             await AudioProcessor.processAudioRecording(audioBlob);
         } catch (error) {
             console.error("Error processing recording:", error);
+            // Release wake lock if processing failed
+            await WakeLockManager.release();
         } finally {
             // Reset UI regardless of processing outcome
             UIManager.updateButtonText('Start Recording');
